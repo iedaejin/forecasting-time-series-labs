@@ -47,7 +47,7 @@ rmarkdown::run("00-tsa-review-learnr.Rmd")
 
 You need **`fpp3`**, **`learnr`**, and **`gradethis`** (from GitHub, as above).
 
-At the end (**Done**), download the `.txt` receipt and **submit it to Blackboard**.
+At the end (**Done**), export a **`.txt`** receipt and submit it to Blackboard — **not** the `.html` file.
 
 ```{r check-pkgs}
 quiz(
@@ -295,11 +295,13 @@ grade_this({
 
 ## Done
 
-1. Enter your details below.
-2. Click **Download completion .txt for Blackboard**.
-3. **Upload that `.txt` to Blackboard** (Lab 0 assignment / dropbox).
+Submit a **`.txt` completion file** to Blackboard Ultra — **not** an HTML knit.
 
-This file is **proof you finished the learnr** (identity + which steps you submitted). It is not an auto-graded exam file.
+1. Enter your details below.
+2. Click **Download .txt for Blackboard** (or **Save .txt in this folder**).
+3. Upload **only that `.txt`** to the Lab 0 assignment.
+
+Do **not** upload `00-tsa-review-learnr.html` (that is just the tutorial page, not your evidence).
 
 ```{r receipt-ui, context="render"}
 shiny::tagList(
@@ -307,7 +309,10 @@ shiny::tagList(
   shiny::textInput("stu_id", "Student ID or IE email", placeholder = "xxx@student.ie.edu"),
   shiny::textInput("stu_section", "Section / group (optional)", placeholder = "PPLEDBA"),
   shiny::br(),
-  shiny::downloadButton("dl_lab00", "Download completion .txt for Blackboard")
+  shiny::downloadButton("dl_lab00", "Download .txt for Blackboard"),
+  shiny::actionButton("write_lab00", "Save .txt in this folder", class = "btn-primary"),
+  shiny::br(), shiny::br(),
+  shiny::verbatimTextOutput("write_lab00_msg", placeholder = TRUE)
 )
 ```
 
@@ -316,88 +321,110 @@ shiny::tagList(
   if (is.null(x) || length(x) == 0 || !nzchar(as.character(x)[1])) y else x
 }
 
-# Expected steps (evidence checklist — not a grade)
 expected_steps <- c(
   "ex-graphics", "ex-stl", "ex-bench", "bench-plots",
   "ex-ses", "ex-your-turn",
   "q-acf", "q-snaive", "q-ses", "q-gas"
 )
 
+build_receipt_txt <- function(name, stu_id, stu_section) {
+  state <- shiny::isolate(
+    shiny::reactiveValuesToList(learnr::get_tutorial_state())
+  )
+  info <- tryCatch(
+    learnr::get_tutorial_info(),
+    error = function(e) list(tutorial_id = "00-tsa-review-learnr")
+  )
+
+  done <- intersect(expected_steps, names(state))
+  missing <- setdiff(expected_steps, names(state))
+
+  lines_done <- if (length(done)) {
+    vapply(sort(done), function(lab) {
+      item <- state[[lab]]
+      sprintf(
+        "- %s [%s] submitted @ %s",
+        lab,
+        item$type %||% "?",
+        item$timestamp %||% ""
+      )
+    }, character(1))
+  } else {
+    "- (no submissions recorded in this session — finish the exercises/quizzes first)"
+  }
+
+  lines_missing <- if (length(missing)) paste0("- ", missing) else "- (none)"
+  stamp <- format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z")
+
+  c(
+    "Lab 0 — TSA review (learnr) — COMPLETION EVIDENCE",
+    "Course: Forecasting for Time Series (PPLEDBA), Fall 2026",
+    sprintf("Tutorial: %s", info$tutorial_id %||% "00-tsa-review-learnr"),
+    "FILE_TYPE: plain text (.txt) — do not submit HTML",
+    "Purpose: proof of completion for Blackboard Ultra",
+    "SUBMIT_TO: Blackboard Ultra — Lab 0 assignment",
+    "",
+    sprintf("Full name: %s", name),
+    sprintf("Student ID / email: %s", stu_id),
+    sprintf("Section / group: %s", stu_section),
+    sprintf("Exported at: %s", stamp),
+    sprintf("R version: %s", paste(R.version$major, R.version$minor, sep = ".")),
+    "",
+    sprintf("COMPLETED_STEPS: %d / %d", length(done), length(expected_steps)),
+    "",
+    "Submitted in this session:",
+    lines_done,
+    "",
+    "Not yet submitted:",
+    lines_missing,
+    "",
+    "I confirm I worked through Lab 0 (interactive learnr) and upload this .txt as completion evidence."
+  )
+}
+
+receipt_filename <- function(name) {
+  nm <- gsub("[^A-Za-z0-9._-]+", "_", trimws(name %||% "student"))
+  if (!nzchar(nm)) nm <- "student"
+  paste0("Lab00_TSA_Review_", nm, ".txt")
+}
+
 output$dl_lab00 <- shiny::downloadHandler(
-  filename = function() {
-    nm <- gsub("[^A-Za-z0-9._-]+", "_", trimws(input$stu_name %||% "student"))
-    if (!nzchar(nm)) nm <- "student"
-    paste0("Lab00_TSA_Review_", nm, ".txt")
-  },
+  filename = function() receipt_filename(input$stu_name),
+  contentType = "text/plain; charset=utf-8",
   content = function(file) {
     name <- trimws(input$stu_name %||% "")
     shiny::validate(shiny::need(nzchar(name), "Enter your full name before downloading."))
-
-    state <- shiny::isolate(
-      shiny::reactiveValuesToList(learnr::get_tutorial_state())
+    txt <- build_receipt_txt(
+      name,
+      trimws(input$stu_id %||% ""),
+      trimws(input$stu_section %||% "")
     )
-    info <- tryCatch(
-      learnr::get_tutorial_info(),
-      error = function(e) list(tutorial_id = "00-tsa-review-learnr")
-    )
-
-    done <- intersect(expected_steps, names(state))
-    missing <- setdiff(expected_steps, names(state))
-
-    lines_done <- character()
-    if (length(done)) {
-      for (lab in sort(done)) {
-        item <- state[[lab]]
-        lines_done <- c(
-          lines_done,
-          sprintf(
-            "- %s [%s] submitted @ %s",
-            lab,
-            item$type %||% "?",
-            item$timestamp %||% ""
-          )
-        )
-      }
-    } else {
-      lines_done <- "- (no submissions recorded in this session — finish the exercises/quizzes first)"
-    }
-
-    lines_missing <- if (length(missing)) {
-      paste0("- ", missing)
-    } else {
-      "- (none)"
-    }
-
-    stamp <- format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z")
-    txt <- c(
-      "Lab 0 — TSA review (learnr) — COMPLETION EVIDENCE",
-      "Course: Forecasting for Time Series (PPLEDBA), Fall 2026",
-      sprintf("Tutorial: %s", info$tutorial_id %||% "00-tsa-review-learnr"),
-      "Purpose: proof of completion for Blackboard (not an auto-graded score file)",
-      "SUBMIT_TO: Blackboard Ultra — Lab 0 assignment",
-      "",
-      sprintf("Full name: %s", name),
-      sprintf("Student ID / email: %s", trimws(input$stu_id %||% "")),
-      sprintf("Section / group: %s", trimws(input$stu_section %||% "")),
-      sprintf("Exported at: %s", stamp),
-      sprintf("R version: %s", paste(R.version$major, R.version$minor, sep = ".")),
-      "",
-      sprintf(
-        "COMPLETED_STEPS: %d / %d",
-        length(done), length(expected_steps)
-      ),
-      "",
-      "Submitted in this session:",
-      lines_done,
-      "",
-      "Not yet submitted:",
-      lines_missing,
-      "",
-      "I confirm I worked through Lab 0 (interactive learnr) and upload this file as completion evidence."
-    )
-    writeLines(txt, file, useBytes = TRUE)
+    writeLines(txt, file, useBytes = FALSE)
   }
 )
+
+write_msg <- shiny::reactiveVal("")
+output$write_lab00_msg <- shiny::renderText(write_msg())
+
+shiny::observeEvent(input$write_lab00, {
+  name <- trimws(input$stu_name %||% "")
+  if (!nzchar(name)) {
+    write_msg("Enter your full name first.")
+    return()
+  }
+  fname <- receipt_filename(name)
+  path <- file.path(getwd(), fname)
+  txt <- build_receipt_txt(
+    name,
+    trimws(input$stu_id %||% ""),
+    trimws(input$stu_section %||% "")
+  )
+  writeLines(txt, path, useBytes = FALSE)
+  write_msg(paste0(
+    "Wrote plain-text file:\n",
+    normalizePath(path, winslash = "/", mustWork = FALSE)
+  ))
+})
 ```
 
 Companion static lab: [`00-tsa-review.Rmd`](00-tsa-review.Rmd).

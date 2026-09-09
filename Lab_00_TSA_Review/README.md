@@ -18,6 +18,6 @@ rmarkdown::run("00-tsa-review-learnr.Rmd")
 
 ## Submit to Blackboard Ultra
 
-On **Done**: download `Lab00_TSA_Review_<name>.txt` and upload it to the Lab 0 assignment.
+On **Done**, export **`Lab00_TSA_Review_<name>.txt`** (Download or Save in folder) and upload **that `.txt` only**.
 
-That `.txt` is **completion evidence** (who you are + which steps you submitted). It is not an auto-graded score sheet.
+Do **not** submit `00-tsa-review-learnr.html` — HTML is the tutorial page, not completion evidence.
