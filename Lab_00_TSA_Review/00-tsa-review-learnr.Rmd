@@ -35,16 +35,17 @@ test <- beer |> filter_index("2008 Q1" ~ .)
 ## Welcome
 
 > Same workflow as `00-tsa-review.Rmd`, but with **code exercises** and short quizzes.
-> Run locally with:
->
-> ```r
-> learnr::run_tutorial(
->   "00-tsa-review-learnr",
->   # or open this .Rmd in RStudio and click Run Document
-> )
-> ```
 
-You need package **`fpp3`** (pulls in tsibble / fable / feasts).
+**How to run (do not open the `.html` file):** in RStudio open this `.Rmd` and click **Run Document**, or:
+
+```r
+install.packages(c("learnr", "remotes", "fpp3"))
+# install.packages("remotes")
+remotes::install_github("rstudio/gradethis")
+rmarkdown::run("00-tsa-review-learnr.Rmd")
+```
+
+You need **`fpp3`**, **`learnr`**, and **`gradethis`** (from GitHub, as above).
 
 At the end (**Done**), download the `.txt` receipt and **submit it to Blackboard**.
 
@@ -78,12 +79,7 @@ beer |> ACF(Beer) |> autoplot()
 
 ```{r ex-graphics-check}
 grade_this({
-  pass_if_equal(
-    .result,
-    beer |> ACF(Beer) |> autoplot(),
-    message = "Nice — ACF plot is a good last step. Also run autoplot / season / subseries if you skipped them."
-  )
-  # Accept any plot / invisible result if code ran without error
+  # Any successful run counts; students should produce the four plots.
   pass("Graphics checklist complete (or close enough). Look for trend, season, and ACF decay/spikes.")
 })
 ```
@@ -181,6 +177,12 @@ fc |> autoplot(beer, level = NULL)
 fit |> select(snaive) |> gg_tsresiduals()
 ```
 
+```{r bench-plots-check}
+grade_this({
+  pass("Nice — compare forecast paths and check whether snaive residuals look like white noise.")
+})
+```
+
 ```{r q-snaive}
 quiz(
   question(
@@ -275,10 +277,14 @@ quiz(
 ```
 
 ```{r ex-your-turn-solution}
-aus_production |>
+gas <- aus_production |>
   filter(!is.na(Gas)) |>
-  ACF(Gas) |>
-  autoplot()
+  select(Quarter, Gas)
+
+gas |> autoplot(Gas)
+gas |> gg_season(Gas)
+gas |> gg_subseries(Gas)
+gas |> ACF(Gas) |> autoplot()
 ```
 
 ```{r ex-your-turn-check}
@@ -293,7 +299,7 @@ grade_this({
 2. Click **Download completion .txt for Blackboard**.
 3. **Upload that `.txt` to Blackboard** (Lab 0 assignment / dropbox).
 
-Inside this tutorial, quizzes/exercises are already checked by **gradethis**. Upload the `.txt` receipt to Blackboard as instructed.
+This file is **proof you finished the learnr** (identity + which steps you submitted). It is not an auto-graded exam file.
 
 ```{r receipt-ui, context="render"}
 shiny::tagList(
@@ -310,9 +316,11 @@ shiny::tagList(
   if (is.null(x) || length(x) == 0 || !nzchar(as.character(x)[1])) y else x
 }
 
-graded_quizzes <- c("q-acf", "q-snaive", "q-ses", "q-gas")
-exercise_labs <- c(
-  "ex-graphics", "ex-stl", "ex-bench", "ex-ses", "ex-your-turn", "bench-plots"
+# Expected steps (evidence checklist — not a grade)
+expected_steps <- c(
+  "ex-graphics", "ex-stl", "ex-bench", "bench-plots",
+  "ex-ses", "ex-your-turn",
+  "q-acf", "q-snaive", "q-ses", "q-gas"
 )
 
 output$dl_lab00 <- shiny::downloadHandler(
@@ -333,44 +341,40 @@ output$dl_lab00 <- shiny::downloadHandler(
       error = function(e) list(tutorial_id = "00-tsa-review-learnr")
     )
 
-    lines_progress <- character()
-    quiz_hit <- 0L
-    quiz_ok <- 0L
-    ex_hit <- 0L
-    if (length(state)) {
-      for (lab in sort(names(state))) {
+    done <- intersect(expected_steps, names(state))
+    missing <- setdiff(expected_steps, names(state))
+
+    lines_done <- character()
+    if (length(done)) {
+      for (lab in sort(done)) {
         item <- state[[lab]]
-        ans <- paste(item$answer %||% "", collapse = " | ")
-        if (nchar(ans) > 80) ans <- paste0(substr(ans, 1, 77), "...")
-        corr <- item$correct
-        lines_progress <- c(
-          lines_progress,
+        lines_done <- c(
+          lines_done,
           sprintf(
-            "- %s [%s] correct=%s @ %s",
+            "- %s [%s] submitted @ %s",
             lab,
             item$type %||% "?",
-            as.character(corr %||% NA),
             item$timestamp %||% ""
-          ),
-          if (nzchar(ans)) sprintf("    answer: %s", ans) else NULL
+          )
         )
-        if (lab %in% graded_quizzes) {
-          quiz_hit <- quiz_hit + 1L
-          if (isTRUE(corr)) quiz_ok <- quiz_ok + 1L
-        }
-        if (lab %in% exercise_labs) ex_hit <- ex_hit + 1L
       }
     } else {
-      lines_progress <- "- (no exercise/quiz submissions recorded in this session)"
+      lines_done <- "- (no submissions recorded in this session — finish the exercises/quizzes first)"
     }
 
-    n_quiz <- length(graded_quizzes)
+    lines_missing <- if (length(missing)) {
+      paste0("- ", missing)
+    } else {
+      "- (none)"
+    }
+
     stamp <- format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z")
     txt <- c(
-      "Lab 0 — TSA review (learnr) — completion receipt",
+      "Lab 0 — TSA review (learnr) — COMPLETION EVIDENCE",
       "Course: Forecasting for Time Series (PPLEDBA), Fall 2026",
       sprintf("Tutorial: %s", info$tutorial_id %||% "00-tsa-review-learnr"),
-      "SUBMIT_TO: Blackboard (Lab 0 assignment)",
+      "Purpose: proof of completion for Blackboard (not an auto-graded score file)",
+      "SUBMIT_TO: Blackboard Ultra — Lab 0 assignment",
       "",
       sprintf("Full name: %s", name),
       sprintf("Student ID / email: %s", trimws(input$stu_id %||% "")),
@@ -379,15 +383,17 @@ output$dl_lab00 <- shiny::downloadHandler(
       sprintf("R version: %s", paste(R.version$major, R.version$minor, sep = ".")),
       "",
       sprintf(
-        "SCORE_QUIZ: %d/%d (attempted %d of %d: %s)",
-        quiz_ok, n_quiz, quiz_hit, n_quiz, paste(graded_quizzes, collapse = ", ")
+        "COMPLETED_STEPS: %d / %d",
+        length(done), length(expected_steps)
       ),
-      sprintf("SCORE_EXERCISES_SUBMITTED: %d/%d", ex_hit, length(exercise_labs)),
       "",
-      "Progress (submitted items):",
-      lines_progress,
+      "Submitted in this session:",
+      lines_done,
       "",
-      "I completed Lab 0 (interactive). I will upload this .txt to Blackboard."
+      "Not yet submitted:",
+      lines_missing,
+      "",
+      "I confirm I worked through Lab 0 (interactive learnr) and upload this file as completion evidence."
     )
     writeLines(txt, file, useBytes = TRUE)
   }
