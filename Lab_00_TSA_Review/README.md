@@ -18,6 +18,6 @@ rmarkdown::run("00-tsa-review-learnr.Rmd")
 
 ## Submit to Blackboard Ultra
 
-On **Done**, export **`Lab00_TSA_Review_<name>.txt`** (Download or Save in folder) and upload **that `.txt` only**.
+On **Done**, click **Save .txt to Downloads**, then upload `Lab00_TSA_Review_<name>.txt`.
 
-Do **not** submit `00-tsa-review-learnr.html` — HTML is the tutorial page, not completion evidence.
+Do **not** submit HTML (`00-tsa-review-learnr.html` or a failed `dl_lab00.html` download from the RStudio Viewer).
