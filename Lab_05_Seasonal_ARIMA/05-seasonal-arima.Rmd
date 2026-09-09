@@ -1,0 +1,97 @@
+---
+title: "Session 5 — Seasonal ARIMA (R lab)"
+subtitle: "Forecasting for Time Series (PPLEDBA)"
+author: "Prof. Dae-Jin Lee (daelee@faculty.ie.edu)"
+date: "Fall 2026"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
+                      fig.width = 8, fig.height = 4.5)
+```
+
+> **Slides vs lab.** Lecture slides emphasise theory, figures, and hand calculations.  
+> This lab is where you **type and run** the tidy `fable` workflow (and check the toy arithmetic).
+
+# Packages
+
+```{r}
+library(fpp3)
+```
+
+# Hand calculations (match the slides)
+
+## Combined seasonal + regular difference (Beer 1993)
+
+```{r}
+beer_toy <- aus_production |>
+  filter(Quarter >= yearquarter("1992 Q1"),
+         Quarter <= yearquarter("1993 Q4")) |>
+  select(Quarter, Beer)
+
+beer_toy |>
+  mutate(
+    d4 = difference(Beer, lag = 4),
+    d14 = difference(difference(Beer, lag = 4))
+  )
+```
+
+Check 1993 Q2: $(1-B)(1-B^4)y_t = 21$; Q3: $-21$.
+
+## Airline MA product (toy)
+
+Expand $(1+0.4B)(1+0.6B^4)$ applied to white noise:
+
+```{r}
+eps <- c(1, -1, 0.5, 0, 2)
+theta <- 0.4
+Theta <- 0.6
+# z_t = e_t + theta e_{t-1} + Theta e_{t-4} + theta*Theta e_{t-5}
+z <- eps +
+  theta * dplyr::lag(eps, 1, default = 0) +
+  Theta * dplyr::lag(eps, 4, default = 0) +
+  theta * Theta * dplyr::lag(eps, 5, default = 0)
+tibble::tibble(t = 1:5, eps = eps, z = z)
+```
+
+Expected $z_5 = 2.6$.
+
+# Australian beer bake-off
+
+```{r}
+beer <- aus_production |> filter(!is.na(Beer))
+beer |> gg_tsdisplay(Beer, plot_type = "partial")
+
+train <- beer |> filter_index(. ~ "2007 Q4")
+test <- beer |> filter_index("2008 Q1" ~ .)
+
+fit <- train |>
+  model(
+    snaive = SNAIVE(Beer),
+    ets = ETS(Beer),
+    sarima = ARIMA(Beer),
+    airline = ARIMA(Beer ~ pdq(0, 1, 1) + PDQ(0, 1, 1))
+  )
+
+glance(fit) |> arrange(AICc)
+fc <- fit |> forecast(h = nrow(test))
+accuracy(fc, beer) |> arrange(RMSE)
+fc |> autoplot(beer, level = NULL) +
+  labs(title = "Beer: ETS vs SARIMA vs SNAIVE vs airline")
+```
+
+```{r}
+fit |> select(sarima) |> gg_tsresiduals()
+report(fit |> select(airline))
+```
+
+# Your turn
+
+1. Try another seasonal series (`us_employment` industry, or tourism).
+2. Fix PDQ manually and compare to `ARIMA()` auto.
+3. Draft 5 bullets for Assignment A1.

@@ -1,0 +1,96 @@
+---
+title: "Session 0 — Time Series Analysis review (R lab)"
+subtitle: "Forecasting for Time Series (PPLEDBA)"
+author: "Prof. Dae-Jin Lee (daelee@faculty.ie.edu)"
+date: "Fall 2026"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
+                      fig.width = 8, fig.height = 4.5)
+```
+
+> **Slides vs lab.** Slides review TSA concepts with figures.  
+> This lab rebuilds the prior-course workflow in `fpp3`.
+
+# Packages
+
+```{r}
+library(fpp3)
+```
+
+# 1. Graphics checklist
+
+```{r}
+beer <- aus_production |>
+  filter(!is.na(Beer)) |>
+  select(Quarter, Beer)
+
+beer |> autoplot(Beer)
+beer |> gg_season(Beer)
+beer |> gg_subseries(Beer)
+beer |> ACF(Beer) |> autoplot()
+```
+
+**Write 3 bullets:** trend? season? ACF message?
+
+# 2. STL decomposition
+
+```{r}
+beer |>
+  model(stl = STL(Beer)) |>
+  components() |>
+  autoplot()
+```
+
+# 3. Benchmarks + accuracy
+
+```{r}
+train <- beer |> filter_index(. ~ "2007 Q4")
+test <- beer |> filter_index("2008 Q1" ~ .)
+
+fit <- train |>
+  model(
+    mean = MEAN(Beer),
+    naive = NAIVE(Beer),
+    snaive = SNAIVE(Beer),
+    drift = RW(Beer ~ drift())
+  )
+
+fc <- fit |> forecast(h = nrow(test))
+accuracy(fc, beer) |> arrange(RMSE)
+fc |> autoplot(beer, level = NULL)
+fit |> select(snaive) |> gg_tsresiduals()
+```
+
+# 4. SES mini hand-check (bridge to Session 1)
+
+```{r}
+y <- c(10, 12, 11)
+alpha <- 0.5
+ell0 <- 10
+ell <- numeric(3)
+ell[1] <- alpha * y[1] + (1 - alpha) * ell0
+for (t in 2:3) ell[t] <- alpha * y[t] + (1 - alpha) * ell[t - 1]
+ell  # expect 10, 11, 11
+```
+
+# 5. Optional: multiplicative season candidate
+
+```{r}
+aus_production |>
+  filter(!is.na(Gas)) |>
+  autoplot(Gas) +
+  labs(title = "Gas production")
+```
+
+# Your turn
+
+1. Pick another series in `tsibbledata` and complete the graphics checklist.
+2. Which benchmark would you defend for that series, and why?
+3. List two TSA gaps you want Session 1–2 to reinforce.

@@ -1,0 +1,181 @@
+---
+title: "Session 6 — Practice Lab: ETS & ARIMA"
+subtitle: "Forecasting for Time Series (PPLEDBA)"
+author: "Prof. Dae-Jin Lee (daelee@faculty.ie.edu)"
+date: "Fall 2026"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: flatly
+---
+
+> **Slides vs lab.** Theory and figures live on the slides. This lab is for runnable code.
+>
+> Use the same Beer hold-out as elsewhere: train through **2007 Q4**, test from **2008 Q1**.
+> For Spain GDP exercises use train **Year <= 2010**.
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
+                      fig.width = 8, fig.height = 4.5)
+```
+
+# Before you start
+
+This lab has **5 exercises**. Solutions are **not** included here — work through
+them in class (pairs/groups), then compare against the instructor's debrief.
+Each exercise follows the same pipeline used in Session 1--5:
+
+> plot → transform? → difference? → ACF/PACF → fit ETS & ARIMA candidates → compare → diagnose
+
+```{r}
+library(fpp3)
+```
+
+---
+
+# Exercise 1 — Multiplicative seasonality (a10 antidiabetic sales)
+
+```{r}
+a10 <- PBS |>
+  filter(ATC2 == "A10") |>
+  select(Month, Concession, Type, Cost) |>
+  summarise(Cost = sum(Cost)) |>
+  mutate(Cost = Cost / 1e6)
+
+a10 |> autoplot(Cost) +
+  labs(title = "Australian antidiabetic drug sales", y = "$ million")
+```
+
+**Your turn:**
+
+1. Look at the seasonal pattern. Does it grow with the level? What does that imply
+   about additive vs. multiplicative seasonality (for ETS) or a log transform (for ARIMA)?
+2. Fit `ETS(Cost)` (auto) and `ARIMA(log(Cost))` (auto). Report `report()` for both.
+3. Use `glance()` to compare `AICc` and `BIC` **within** each model family (ETS vs. ETS,
+   ARIMA vs. ARIMA — not across families).
+4. Forecast 24 months ahead with each model and plot against history. Do the forecast
+   shapes look plausible?
+5. In 2–3 sentences: which model would you recommend for a 2-year pharmacy stocking
+   forecast, and why?
+
+```{r}
+# Your code here
+
+```
+
+---
+
+# Exercise 2 — Differencing and stationarity (Australian GDP)
+
+```{r}
+gdp <- global_economy |>
+  filter(Code == "AUS") |>
+  select(Year, GDP) |>
+  mutate(log_gdp = log(GDP))
+
+gdp |> autoplot(log_gdp) +
+  labs(title = "Australia: log(GDP)")
+```
+
+**Your turn:**
+
+1. Use `features(log_gdp, unitroot_ndiffs)` to check how many differences are needed.
+2. Use `gg_tsdisplay(difference(log_gdp), plot_type = "partial")` to inspect the
+   differenced series' ACF/PACF. Propose 1–2 candidate `(p, d, q)` combinations by eye.
+3. Fit your candidates plus `ARIMA(log_gdp)` (auto-selected). Compare `AICc`.
+4. Split off the last 5 years as a test set. Compare `RMSE` and `MAPE` **on the
+   original GDP scale** (not log) for your best ARIMA model vs. `ETS(log_gdp)`.
+5. Which model wins on AICc? Which wins on holdout accuracy? If they disagree, which
+   would you trust more, and why?
+
+```{r}
+# Your code here
+
+```
+
+---
+
+# Exercise 3 — Seasonal ARIMA vs. ETS with a changing pattern
+
+```{r}
+arrivals_jp <- aus_arrivals |>
+  filter(Origin == "Japan")
+
+arrivals_jp |> autoplot(Arrivals) +
+  labs(title = "Arrivals to Australia from Japan")
+```
+
+**Your turn:**
+
+1. Describe what changes over time in this series (trend direction, seasonal
+   amplitude, any structural breaks you can see).
+2. Fit `ETS(Arrivals)` and `ARIMA(Arrivals)` (auto, let it choose a transform/order).
+3. Run `gg_tsresiduals()` for both. Does either show leftover autocorrelation?
+4. Compare `accuracy()` on a holdout of the last 3 years.
+5. Which model handles the structural change more gracefully? Justify using both the
+   plot and the diagnostics.
+
+```{r}
+# Your code here
+
+```
+
+---
+
+# Exercise 4 — Pure ARMA identification (Hudson Bay hare trappings)
+
+```{r}
+pelt |> autoplot(Hare) +
+  labs(title = "Hudson Bay Company: hare pelt trappings", y = "Number trapped")
+```
+
+**Your turn:**
+
+1. This series has no trend and no seasonality (it's annual). Is it already
+   stationary? Check with `unitroot_kpss` if you like.
+2. Plot `ACF(Hare)` and `PACF(Hare)`. Based on the shapes (cut off vs. decay),
+   propose 1–2 candidate `(p, q)` pairs.
+3. Fit your guesses with `ARIMA(Hare ~ pdq(p, 0, q))` for your chosen `p, q`, plus
+   `ARIMA(Hare)` auto-selected. Compare `AICc`.
+4. How close did your by-eye guess get to the auto-selected model?
+5. The fitted AR order is related to the length of the population cycle. Roughly how
+   many years does one hare population cycle last, based on the plot?
+
+```{r}
+# Your code here
+
+```
+
+---
+
+# Exercise 5 (stretch) — Pick your own series
+
+```{r}
+aus_retail |> distinct(State, Industry) |> head(10)
+```
+
+**Your turn:**
+
+1. Pick **one** `State` × `Industry` combination from `aus_retail` (filter to a single
+   series with `filter(State == "...", Industry == "...")`).
+2. Run the full pipeline: plot → transform? → difference? → ACF/PACF → fit `ETS()`
+   and `ARIMA()` (both auto) → compare AICc within family → holdout accuracy → residuals.
+3. Write your final recommendation in **3 sentences**, as if presenting to a retail
+   category manager who has never heard of AICc.
+
+```{r}
+# Your code here
+
+```
+
+---
+
+# Wrap-up
+
+Be ready to share, for **one** of your exercises:
+
+- the model you chose,
+- the single plot you'd show a non-technical stakeholder,
+- one thing that surprised you.

@@ -1,0 +1,397 @@
+---
+title: "Lab 0 — TSA review (interactive)"
+subtitle: "Forecasting for Time Series (PPLEDBA)"
+author: "Prof. Dae-Jin Lee (daelee@faculty.ie.edu)"
+date: "Fall 2026"
+output:
+  learnr::tutorial:
+    progressive: true
+    allow_skip: true
+    language: en
+runtime: shiny_prerendered
+description: "Interactive fpp3 review: graphics, STL, benchmarks, SES hand-check."
+---
+
+```{r setup, include=FALSE}
+library(learnr)
+library(gradethis)
+library(fpp3)
+knitr::opts_chunk$set(
+  echo = FALSE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 8,
+  fig.height = 4.2
+)
+gradethis::gradethis_setup()
+
+beer <- aus_production |>
+  filter(!is.na(Beer)) |>
+  select(Quarter, Beer)
+train <- beer |> filter_index(. ~ "2007 Q4")
+test <- beer |> filter_index("2008 Q1" ~ .)
+```
+
+## Welcome
+
+> Same workflow as `00-tsa-review.Rmd`, but with **code exercises** and short quizzes.
+> Run locally with:
+>
+> ```r
+> learnr::run_tutorial(
+>   "00-tsa-review-learnr",
+>   # or open this .Rmd in RStudio and click Run Document
+> )
+> ```
+
+You need package **`fpp3`** (pulls in tsibble / fable / feasts).
+
+At the end (**Done**), download the `.txt` receipt and **submit it to Blackboard**.
+
+```{r check-pkgs}
+quiz(
+  question(
+    "Have you already installed and loaded `fpp3` successfully on your machine?",
+    answer("Yes", correct = TRUE),
+    answer("Not yet — I'll run `install.packages(\"fpp3\")` first"),
+    allow_retry = TRUE
+  )
+)
+```
+
+## 1. Graphics checklist
+
+Build the beer series and the four standard plots.
+
+```{r ex-graphics, exercise = TRUE, exercise.lines = 12}
+# beer is already in the environment
+# 1) autoplot  2) gg_season  3) gg_subseries  4) ACF + autoplot
+
+```
+
+```{r ex-graphics-solution}
+beer |> autoplot(Beer)
+beer |> gg_season(Beer)
+beer |> gg_subseries(Beer)
+beer |> ACF(Beer) |> autoplot()
+```
+
+```{r ex-graphics-check}
+grade_this({
+  pass_if_equal(
+    .result,
+    beer |> ACF(Beer) |> autoplot(),
+    message = "Nice — ACF plot is a good last step. Also run autoplot / season / subseries if you skipped them."
+  )
+  # Accept any plot / invisible result if code ran without error
+  pass("Graphics checklist complete (or close enough). Look for trend, season, and ACF decay/spikes.")
+})
+```
+
+```{r q-acf}
+quiz(
+  question(
+    "For a strong quarterly seasonal series like beer, the ACF typically shows:",
+    answer("Near-zero correlations at all nonzero lags"),
+    answer("Spikes near seasonal lags (e.g. 4, 8, 12) and/or slow seasonal pattern", correct = TRUE),
+    answer("Only lag-1 correlation and nothing else"),
+    answer("Exactly 1 at every lag"),
+    allow_retry = TRUE
+  )
+)
+```
+
+**Write (for yourself):** 3 bullets — trend? season? ACF message?
+
+## 2. STL decomposition
+
+```{r ex-stl, exercise = TRUE, exercise.lines = 8}
+# Fit STL on Beer and autoplot the components
+
+```
+
+```{r ex-stl-solution}
+beer |>
+  model(stl = STL(Beer)) |>
+  components() |>
+  autoplot()
+```
+
+```{r ex-stl-check}
+grade_this({
+  pass("STL components plotted. Check which piece dominates: trend vs season vs remainder.")
+})
+```
+
+## 3. Benchmarks + accuracy
+
+Hold out from **2008 Q1** onward. Fit mean / naïve / seasonal naïve / drift; compare RMSE.
+
+```{r ex-bench, exercise = TRUE, exercise.lines = 18}
+# train and test are available
+# model MEAN, NAIVE, SNAIVE, RW(~drift()), forecast, accuracy, arrange by RMSE
+
+```
+
+```{r ex-bench-solution}
+fit <- train |>
+  model(
+    mean = MEAN(Beer),
+    naive = NAIVE(Beer),
+    snaive = SNAIVE(Beer),
+    drift = RW(Beer ~ drift())
+  )
+fc <- fit |> forecast(h = nrow(test))
+accuracy(fc, beer) |> arrange(RMSE)
+```
+
+```{r ex-bench-check}
+grade_this({
+  pass_if(~ is.data.frame(.result) || inherits(.result, "tbl_df"),
+          message = "Good — inspect which method has the lowest RMSE.")
+  pass("Run the accuracy table and note the winner. Then plot forecasts and snaive residuals.")
+})
+```
+
+Optional plots (solution code):
+
+```{r bench-plots, exercise = TRUE, exercise.lines = 10}
+fit <- train |>
+  model(
+    mean = MEAN(Beer),
+    naive = NAIVE(Beer),
+    snaive = SNAIVE(Beer),
+    drift = RW(Beer ~ drift())
+  )
+fc <- fit |> forecast(h = nrow(test))
+# autoplot forecasts; gg_tsresiduals for snaive
+
+```
+
+```{r bench-plots-solution}
+fit <- train |>
+  model(
+    mean = MEAN(Beer),
+    naive = NAIVE(Beer),
+    snaive = SNAIVE(Beer),
+    drift = RW(Beer ~ drift())
+  )
+fc <- fit |> forecast(h = nrow(test))
+fc |> autoplot(beer, level = NULL)
+fit |> select(snaive) |> gg_tsresiduals()
+```
+
+```{r q-snaive}
+quiz(
+  question(
+    "For quarterly beer with clear seasonality, which benchmark is usually the strongest starting point?",
+    answer("MEAN (global average)"),
+    answer("NAIVE (last value)"),
+    answer("SNAIVE (same season last year)", correct = TRUE),
+    answer("A random shuffle of the training set"),
+    allow_retry = TRUE
+  )
+)
+```
+
+## 4. SES hand-check (bridge to Session 1)
+
+SES level update: $\ell_t = \alpha y_t + (1-\alpha)\ell_{t-1}$.
+
+Given $y = (10, 12, 11)$, $\alpha = 0.5$, $\ell_0 = 10$, compute $\ell_1, \ell_2, \ell_3$.
+
+```{r ex-ses, exercise = TRUE, exercise.lines = 12}
+y <- c(10, 12, 11)
+alpha <- 0.5
+ell0 <- 10
+# fill ell; expect c(10, 11, 11)
+
+```
+
+```{r ex-ses-solution}
+y <- c(10, 12, 11)
+alpha <- 0.5
+ell0 <- 10
+ell <- numeric(3)
+ell[1] <- alpha * y[1] + (1 - alpha) * ell0
+for (t in 2:3) ell[t] <- alpha * y[t] + (1 - alpha) * ell[t - 1]
+ell
+```
+
+```{r ex-ses-check}
+grade_this({
+  pass_if_equal(c(10, 11, 11), message = "Correct: levels are 10, 11, 11.")
+  fail_if(~ !is.numeric(.result) || length(.result) != 3,
+          message = "Return a length-3 numeric vector `ell`.")
+  fail("Check the recursion: start from ell0 = 10 with alpha = 0.5.")
+})
+```
+
+```{r q-ses}
+quiz(
+  question(
+    "SES point forecasts from the last level $\\ell_T$ are:",
+    answer("Flat: $\\hat{y}_{T+h|T} = \\ell_T$ for all $h \\ge 1$", correct = TRUE),
+    answer("Always linearly trending"),
+    answer("Always equal to the sample mean"),
+    answer("Seasonally repeating the last year only"),
+    allow_retry = TRUE
+  )
+)
+```
+
+## 5. Optional — multiplicative season?
+
+```{r gas-plot}
+aus_production |>
+  filter(!is.na(Gas)) |>
+  autoplot(Gas) +
+  labs(title = "Gas production")
+```
+
+```{r q-gas}
+quiz(
+  question(
+    "Looking at Gas, seasonal swings that grow with the level suggest:",
+    answer("Additive seasonality only"),
+    answer("Multiplicative seasonality (or a variance-stabilizing transform) is more plausible", correct = TRUE),
+    answer("No seasonality at all"),
+    answer("That MAE equals RMSE by definition"),
+    allow_retry = TRUE
+  )
+)
+```
+
+## Your turn
+
+1. Pick another series in `tsibbledata` and repeat the graphics checklist (new exercise box below).
+2. Which benchmark would you defend for that series, and why?
+3. List two TSA gaps you want Session 1–2 to reinforce.
+
+```{r ex-your-turn, exercise = TRUE, exercise.lines = 14}
+# Example idea: aus_production Gas, or another tsibble series
+# autoplot / gg_season / gg_subseries / ACF
+
+```
+
+```{r ex-your-turn-solution}
+aus_production |>
+  filter(!is.na(Gas)) |>
+  ACF(Gas) |>
+  autoplot()
+```
+
+```{r ex-your-turn-check}
+grade_this({
+  pass("Good exploration. Bring your 3 bullets + preferred benchmark to class.")
+})
+```
+
+## Done
+
+1. Enter your details below.
+2. Click **Download completion .txt for Blackboard**.
+3. **Upload that `.txt` to Blackboard** (Lab 0 assignment / dropbox).
+
+Inside this tutorial, quizzes/exercises are already checked by **gradethis**. Blackboard records the upload; grading of the receipt is done by your instructor.
+
+```{r receipt-ui, context="render"}
+shiny::tagList(
+  shiny::textInput("stu_name", "Full name", placeholder = "Given name + surname"),
+  shiny::textInput("stu_id", "Student ID or IE email", placeholder = "xxx@student.ie.edu"),
+  shiny::textInput("stu_section", "Section / group (optional)", placeholder = "PPLEDBA"),
+  shiny::br(),
+  shiny::downloadButton("dl_lab00", "Download completion .txt for Blackboard")
+)
+```
+
+```{r receipt-server, context="server"}
+`%||%` <- function(x, y) {
+  if (is.null(x) || length(x) == 0 || !nzchar(as.character(x)[1])) y else x
+}
+
+graded_quizzes <- c("q-acf", "q-snaive", "q-ses", "q-gas")
+exercise_labs <- c(
+  "ex-graphics", "ex-stl", "ex-bench", "ex-ses", "ex-your-turn", "bench-plots"
+)
+
+output$dl_lab00 <- shiny::downloadHandler(
+  filename = function() {
+    nm <- gsub("[^A-Za-z0-9._-]+", "_", trimws(input$stu_name %||% "student"))
+    if (!nzchar(nm)) nm <- "student"
+    paste0("Lab00_TSA_Review_", nm, ".txt")
+  },
+  content = function(file) {
+    name <- trimws(input$stu_name %||% "")
+    shiny::validate(shiny::need(nzchar(name), "Enter your full name before downloading."))
+
+    state <- shiny::isolate(
+      shiny::reactiveValuesToList(learnr::get_tutorial_state())
+    )
+    info <- tryCatch(
+      learnr::get_tutorial_info(),
+      error = function(e) list(tutorial_id = "00-tsa-review-learnr")
+    )
+
+    lines_progress <- character()
+    quiz_hit <- 0L
+    quiz_ok <- 0L
+    ex_hit <- 0L
+    if (length(state)) {
+      for (lab in sort(names(state))) {
+        item <- state[[lab]]
+        ans <- paste(item$answer %||% "", collapse = " | ")
+        if (nchar(ans) > 80) ans <- paste0(substr(ans, 1, 77), "...")
+        corr <- item$correct
+        lines_progress <- c(
+          lines_progress,
+          sprintf(
+            "- %s [%s] correct=%s @ %s",
+            lab,
+            item$type %||% "?",
+            as.character(corr %||% NA),
+            item$timestamp %||% ""
+          ),
+          if (nzchar(ans)) sprintf("    answer: %s", ans) else NULL
+        )
+        if (lab %in% graded_quizzes) {
+          quiz_hit <- quiz_hit + 1L
+          if (isTRUE(corr)) quiz_ok <- quiz_ok + 1L
+        }
+        if (lab %in% exercise_labs) ex_hit <- ex_hit + 1L
+      }
+    } else {
+      lines_progress <- "- (no exercise/quiz submissions recorded in this session)"
+    }
+
+    n_quiz <- length(graded_quizzes)
+    stamp <- format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z")
+    txt <- c(
+      "Lab 0 — TSA review (learnr) — completion receipt",
+      "Course: Forecasting for Time Series (PPLEDBA), Fall 2026",
+      sprintf("Tutorial: %s", info$tutorial_id %||% "00-tsa-review-learnr"),
+      "SUBMIT_TO: Blackboard (Lab 0 assignment)",
+      "",
+      sprintf("Full name: %s", name),
+      sprintf("Student ID / email: %s", trimws(input$stu_id %||% "")),
+      sprintf("Section / group: %s", trimws(input$stu_section %||% "")),
+      sprintf("Exported at: %s", stamp),
+      sprintf("R version: %s", paste(R.version$major, R.version$minor, sep = ".")),
+      "",
+      sprintf(
+        "SCORE_QUIZ: %d/%d (attempted %d of %d: %s)",
+        quiz_ok, n_quiz, quiz_hit, n_quiz, paste(graded_quizzes, collapse = ", ")
+      ),
+      sprintf("SCORE_EXERCISES_SUBMITTED: %d/%d", ex_hit, length(exercise_labs)),
+      "",
+      "Progress (submitted items):",
+      lines_progress,
+      "",
+      "I completed Lab 0 (interactive). I will upload this .txt to Blackboard."
+    )
+    writeLines(txt, file, useBytes = TRUE)
+  }
+)
+```
+
+Companion static lab: [`00-tsa-review.Rmd`](00-tsa-review.Rmd).

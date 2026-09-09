@@ -1,0 +1,176 @@
+---
+title: "Session 1 — ETS and AIC (R lab)"
+subtitle: "Forecasting for Time Series (PPLEDBA)"
+author: "Prof. Dae-Jin Lee (daelee@faculty.ie.edu)"
+date: "Fall 2026"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
+                      fig.width = 8, fig.height = 4.5)
+```
+
+> **Slides vs lab.** Lecture slides emphasise theory, figures, and hand calculations.  
+> This lab is where you **type and run** the tidy `fable` workflow (and check the toy arithmetic).
+
+# Packages
+
+```{r}
+# install.packages("fpp3")  # once
+library(fpp3)
+```
+
+# Hand calculations (match the slides)
+
+## SES toy series
+
+Data: $y = (10, 12, 11, 13)$, $\alpha = 0.5$, $\ell_0 = 10$.
+
+```{r}
+y <- c(10, 12, 11, 13)
+alpha <- 0.5
+ell <- numeric(4)
+ell0 <- 10
+ell[1] <- alpha * y[1] + (1 - alpha) * ell0
+for (t in 2:4) {
+  ell[t] <- alpha * y[t] + (1 - alpha) * ell[t - 1]
+}
+tibble::tibble(t = 1:4, y = y, level = ell, forecast_next = ell)
+```
+
+You should get levels `10, 11, 11, 12`. Multi-step forecasts from $t=4$ are all `12`.
+
+## Holt toy series
+
+Data: $y = (10, 12, 14, 15)$, $\alpha = \beta^* = 0.5$, $\ell_0 = 10$, $b_0 = 2$.
+
+```{r}
+y <- c(10, 12, 14, 15)
+alpha <- 0.5
+beta <- 0.5
+ell <- numeric(4)
+b <- numeric(4)
+ell_prev <- 10
+b_prev <- 2
+for (t in 1:4) {
+  ell[t] <- alpha * y[t] + (1 - alpha) * (ell_prev + b_prev)
+  b[t] <- beta * (ell[t] - ell_prev) + (1 - beta) * b_prev
+  ell_prev <- ell[t]
+  b_prev <- b[t]
+}
+tibble::tibble(t = 1:4, y = y, level = round(ell, 4), slope = round(b, 4),
+               fcast_1 = round(ell + b, 4))
+```
+
+Check $t=1$: $\ell_1=11$, $b_1=1.5$. From $t=4$, the $h$-step forecast is $\ell_4 + h b_4$.
+
+## Additive seasonal update (one step)
+
+$y_5=22$, $\ell_4=18.75$, $s_1=1.25$, $\alpha=\gamma=0.5$:
+
+```{r}
+ell5 <- 0.5 * (22 - 1.25) + 0.5 * 18.75
+s5 <- 0.5 * (22 - ell5) + 0.5 * 1.25
+c(level = ell5, season_Q1 = s5, fcast_Q2 = ell5 - 8.75)
+```
+
+# Data: Australian beer production
+
+```{r}
+beer <- aus_production |>
+  filter(!is.na(Beer)) |>
+  select(Quarter, Beer)
+
+beer |> autoplot(Beer) +
+  labs(title = "Australian beer production", y = "megalitres")
+```
+
+**Interpret:** Trend? Seasonality? Changing variance? Additive or multiplicative season?
+
+# Seasonal graphics
+
+```{r}
+beer |> gg_season(Beer) + labs(title = "Seasonal plot: Beer")
+beer |> gg_subseries(Beer) + labs(title = "Subseries plot: Beer")
+```
+
+# Fit ETS (automatic)
+
+```{r}
+fit_auto <- beer |> model(ets = ETS(Beer))
+report(fit_auto)
+```
+
+```{r}
+fit_auto |>
+  forecast(h = "3 years") |>
+  autoplot(beer, level = NULL) +
+  labs(title = "ETS automatic forecast")
+```
+
+# Compare specifications + AICc
+
+```{r}
+fit_cmp <- beer |>
+  model(
+    snaive = SNAIVE(Beer),
+    ses = ETS(Beer ~ error("A") + trend("N") + season("N")),
+    holt_winters = ETS(Beer ~ error("A") + trend("A") + season("A")),
+    ets_auto = ETS(Beer)
+  )
+
+glance(fit_cmp) |> arrange(AICc)
+accuracy(fit_cmp)
+```
+
+# Hold-out evaluation
+
+```{r}
+train <- beer |> filter_index(. ~ "2007 Q4")
+test <- beer |> filter_index("2008 Q1" ~ .)
+
+fit_ho <- train |>
+  model(
+    snaive = SNAIVE(Beer),
+    ses = ETS(Beer ~ error("A") + trend("N") + season("N")),
+    auto = ETS(Beer)
+  )
+
+fc <- fit_ho |> forecast(h = nrow(test))
+accuracy(fc, beer) |> arrange(RMSE)
+fc |> autoplot(beer, level = NULL)
+```
+
+# Residuals
+
+```{r}
+fit_auto |> gg_tsresiduals()
+```
+
+# Stretch: employment SES vs Holt
+
+```{r}
+us_total <- us_employment |>
+  filter(Title == "All Employees, Total Nonfarm", year(Month) >= 1990) |>
+  select(Month, Employed)
+
+us_total |>
+  model(
+    ses = ETS(Employed ~ error("A") + trend("N") + season("N")),
+    holt = ETS(Employed ~ error("A") + trend("A") + season("N")),
+    damped = ETS(Employed ~ error("A") + trend("Ad") + season("N"))
+  ) |>
+  forecast(h = 36) |>
+  autoplot(us_total, level = NULL)
+```
+
+# Your turn
+
+1. Refit Beer with multiplicative seasonality (if admissible) and compare AICc.
+2. Hold out the last 8 quarters; compare `SNAIVE` vs `ETS` on RMSE / MAE.
+3. Write two sentences recommending a model to a brewery planner.

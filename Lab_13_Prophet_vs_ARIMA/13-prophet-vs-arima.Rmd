@@ -1,0 +1,85 @@
+---
+title: "Session 13 - Prophet vs ARIMA (R lab)"
+subtitle: "Forecasting for Time Series (PPLEDBA)"
+author: "Prof. Dae-Jin Lee (daelee@faculty.ie.edu)"
+date: "Fall 2026"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
+                      fig.width = 8, fig.height = 4.5)
+```
+
+> **Slides vs lab.** Slides expand Prophet theory (trend, Fourier season, holidays).
+> This lab runs the Beer bake-off. **Prophet is optional**: the guarded chunk skips
+> cleanly if `fable.prophet` is not installed.
+
+# Packages
+
+```{r}
+library(fpp3)
+```
+
+# Recall: Prophet model
+
+\[
+y_t = g(t) + s(t) + h(t) + \varepsilon_t
+\]
+
+- $g(t)$: piecewise-linear trend with changepoints  
+- $s(t)$: Fourier seasonality (`season(period, order)`)  
+- $h(t)$: holiday dummies (optional)  
+
+For quarterly Beer, set `period = 4` explicitly (defaults assume daily-or-finer data).
+
+# Beer bake-off: SNAIVE, ETS, ARIMA, DHR
+
+Same hold-out as Sessions 5 / 12: train through **2007 Q4**.
+
+```{r}
+beer <- aus_production |> filter(!is.na(Beer))
+train <- beer |> filter_index(. ~ "2007 Q4")
+test <- beer |> filter_index("2008 Q1" ~ .)
+
+fit <- train |>
+  model(
+    snaive = SNAIVE(Beer),
+    ets = ETS(Beer),
+    arima = ARIMA(Beer),
+    dhr = ARIMA(Beer ~ fourier(K = 2) + PDQ(0, 0, 0))
+  )
+fc <- fit |> forecast(h = nrow(test))
+accuracy(fc, beer) |> select(.model, RMSE, MAE, MAPE) |> arrange(RMSE)
+fc |> autoplot(beer, level = NULL) +
+  labs(title = "Method bake-off on Beer (hold-out from 2008 Q1)")
+```
+
+# Optional: Prophet (guarded)
+
+```{r}
+if (requireNamespace("fable.prophet", quietly = TRUE)) {
+  library(fable.prophet)
+  fit_prophet <- train |>
+    model(
+      prophet = prophet(Beer ~ season(period = 4, order = 2))
+    )
+  fc_prophet <- fit_prophet |> forecast(h = nrow(test))
+  accuracy(fc_prophet, beer) |> select(.model, RMSE, MAE, MAPE)
+  # Components (trend / season) - useful for communication slides
+  fit_prophet |> components() |> autoplot()
+} else {
+  message("fable.prophet not installed - skipping Prophet chunk")
+  message("Install with install.packages('fable.prophet') if you have a Stan toolchain.")
+}
+```
+
+# Your turn
+
+1. Fill a small table: method, RMSE, interpretability (H/M/L), one residual note.
+2. If Prophet ran: does it beat ETS/ARIMA on this hold-out? Relate to FPP3's warning.
+3. When would you present Prophet components to a product manager? When would you insist on an ARIMA+regression bake-off for a risk audience?

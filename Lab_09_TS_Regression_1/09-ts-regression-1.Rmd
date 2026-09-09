@@ -1,0 +1,111 @@
+---
+title: "Session 9 — Time series regression (1/2) (R lab)"
+subtitle: "Forecasting for Time Series (PPLEDBA)"
+author: "Prof. Dae-Jin Lee (daelee@faculty.ie.edu)"
+date: "Fall 2026"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
+                      fig.width = 8, fig.height = 4.5)
+```
+
+> **Slides vs lab.** Lecture slides emphasise theory, figures, and hand calculations.
+> This lab is where you **type and run** the tidy `fable` workflow (and check the toy arithmetic).
+
+# Packages
+
+```{r}
+library(fpp3)
+```
+
+# Hand calculations (match the slides)
+
+## Design matrix and fitted values
+
+Two years of quarterly data, trend $t=1,\dots,8$, seasonal dummies $D_2,D_3,D_4$ (Q1 baseline).
+Given coefficients (not estimated): $\beta_0=10,\ \beta_1=0.5,\ \beta_2=-2,\ \beta_3=-3,\ \beta_4=4$.
+
+```{r}
+quarters <- rep(1:4, times = 2)
+toy <- tibble::tibble(
+  t = 1:8,
+  Quarter = quarters,
+  D2 = as.numeric(quarters == 2),
+  D3 = as.numeric(quarters == 3),
+  D4 = as.numeric(quarters == 4)
+)
+
+beta <- c(Intercept = 10, t = 0.5, D2 = -2, D3 = -3, D4 = 4)
+
+X <- as.matrix(cbind(Intercept = 1, toy[, c("t", "D2", "D3", "D4")]))
+toy$fitted <- as.numeric(X %*% beta)
+toy
+```
+
+You should get fitted values `10.5, 9, 8.5, 16, 12.5, 11, 10.5, 18` — matching the slide table exactly.
+Check the trend-only step: $\hat y_8-\hat y_4 = 4\beta_1 = 2$.
+
+# Data: Australian beer production
+
+```{r}
+beer <- aus_production |>
+  filter(!is.na(Beer)) |>
+  select(Quarter, Beer)
+
+beer |> autoplot(Beer) +
+  labs(title = "Australian beer production", y = "megalitres")
+```
+
+# Fit TSLM (trend + season) on the full series
+
+```{r}
+fit <- beer |>
+  model(
+    snaive = SNAIVE(Beer),
+    tslm = TSLM(Beer ~ trend() + season()),
+    ets = ETS(Beer)
+  )
+
+report(fit |> select(tslm))
+glance(fit) |> arrange(AICc)
+```
+
+```{r}
+fit |> select(tslm) |> gg_tsresiduals()
+```
+
+```{r}
+fit |> forecast(h = "2 years") |> autoplot(beer, level = NULL) +
+  labs(title = "TSLM vs ETS vs SNAIVE")
+```
+
+# Hold-out evaluation: train through 2007 Q4, test from 2008 Q1
+
+```{r}
+train <- beer |> filter_index(. ~ "2007 Q4")
+test <- beer |> filter_index("2008 Q1" ~ .)
+
+fit_ho <- train |>
+  model(
+    snaive = SNAIVE(Beer),
+    tslm = TSLM(Beer ~ trend() + season()),
+    ets = ETS(Beer)
+  )
+
+fc_ho <- fit_ho |> forecast(h = nrow(test))
+accuracy(fc_ho, beer) |> arrange(RMSE)
+fc_ho |> autoplot(beer, level = NULL) +
+  labs(title = "Hold-out forecasts (train through 2007 Q4)")
+```
+
+# Your turn
+
+1. Add only `trend()` (no season) and compare residual seasonality with `gg_tsresiduals()`.
+2. Interpret the largest seasonal coefficient (`report()`) in one sentence, relative to the omitted quarter.
+3. From the hold-out table above, which model wins on RMSE? Does the winner match the in-sample AICc ranking?

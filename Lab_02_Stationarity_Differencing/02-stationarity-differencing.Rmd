@@ -1,0 +1,94 @@
+---
+title: "Session 2 — Stationarity and differencing"
+subtitle: "Forecasting for Time Series (PPLEDBA)"
+author: "Prof. Dae-Jin Lee (daelee@faculty.ie.edu)"
+date: "Fall 2026"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: flatly
+---
+
+> **Slides vs lab.** Theory and figures live on the slides. This lab is for runnable code.
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
+                      fig.width = 8, fig.height = 4.5)
+```
+
+```{r}
+library(fpp3)
+```
+
+
+# Nonstationary example: Alphabet (GOOG) closing price
+
+Daily USD closing share price of Alphabet Inc.\ (ticker `GOOG`),
+from `gafa_stock` in `{tsibbledata}`.
+
+```{r}
+goog <- gafa_stock |>
+  filter(Symbol == "GOOG") |>
+  filter(year(Date) >= 2016) |>
+  select(Date, Close)
+
+goog |> autoplot(Close) + labs(title = "Alphabet (GOOG) closing price", y = "USD")
+goog |> gg_tsdisplay(Close, plot_type = "partial")
+```
+
+# Difference once
+
+```{r}
+goog |>
+  mutate(diff_close = difference(Close)) |>
+  gg_tsdisplay(diff_close, plot_type = "partial")
+```
+
+# Seasonal example: beer
+
+```{r}
+beer <- aus_production |> filter(!is.na(Beer))
+beer |> features(Beer, list(ndiffs = unitroot_ndiffs, nsdiffs = unitroot_nsdiffs))
+
+beer_d <- beer |>
+  mutate(Beer_d = difference(Beer, lag = 4)) |>
+  filter(!is.na(Beer_d))
+
+beer_d |> gg_tsdisplay(Beer_d, plot_type = "partial")
+```
+
+# Hand calculations (match the slides)
+
+Using Beer 1992–1993 from the slides:
+
+```{r}
+beer_toy <- aus_production |>
+  filter(Quarter >= yearquarter("1992 Q1"),
+         Quarter <= yearquarter("1993 Q4")) |>
+  select(Quarter, Beer)
+
+beer_toy
+```
+
+1. Compute $\nabla y_t$, $\nabla_4 y_t$, and $(1-B)(1-B^4)y_t$ by hand for 1993.
+2. Check with:
+
+```{r}
+beer_toy |>
+  mutate(
+    d1 = difference(Beer),
+    d4 = difference(Beer, lag = 4),
+    d14 = difference(difference(Beer, lag = 4))
+  )
+```
+
+# Backshift practice
+
+Expand $(1-B)^2 y_t$ and $(1-B)(1-\tfrac12 B)y_t$; evaluate on a short toy vector and verify in R.
+
+# Your turn
+
+1. For `us_employment` (one industry of your choice), decide whether to log, difference, and/or seasonally difference. Justify with plots + `unitroot_*`.
+2. Over-difference once more than needed and show how the ACF changes.

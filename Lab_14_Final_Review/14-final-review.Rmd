@@ -1,0 +1,94 @@
+---
+title: "Session 14 - Final review lab"
+subtitle: "Forecasting for Time Series (PPLEDBA)"
+author: "Prof. Dae-Jin Lee (daelee@faculty.ie.edu)"
+date: "Fall 2026"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
+                      fig.width = 8, fig.height = 4.5)
+```
+
+> **Slides vs lab.** Slides summarise the course checklist. This lab is a reproducible
+> capstone bake-off using the same Beer hold-out as Sessions 5 and 13.
+
+# Packages
+
+```{r}
+library(fpp3)
+```
+
+# Capstone bake-off on Beer (train through 2007 Q4)
+
+```{r}
+beer <- aus_production |> filter(!is.na(Beer))
+train <- beer |> filter_index(. ~ "2007 Q4")
+test <- beer |> filter_index("2008 Q1" ~ .)
+h <- nrow(test)
+
+fit <- train |>
+  model(
+    snaive = SNAIVE(Beer),
+    ets = ETS(Beer),
+    arima = ARIMA(Beer),
+    dhr = ARIMA(Beer ~ fourier(K = 2) + PDQ(0, 0, 0)),
+    tslm = TSLM(Beer ~ trend() + season())
+  )
+fc <- fit |> forecast(h = h)
+accuracy(fc, beer) |> select(.model, RMSE, MAE, MAPE) |> arrange(RMSE)
+fc |> autoplot(beer, level = NULL) +
+  labs(title = "Capstone bake-off on Beer (hold-out from 2008 Q1)")
+```
+
+# Residual check (lowest-RMSE model)
+
+```{r}
+best <- accuracy(fc, beer) |> arrange(RMSE) |> slice(1) |> pull(.model)
+fit |> select(all_of(best)) |> gg_tsresiduals()
+```
+
+# Hand reminder: combined difference (Session 2)
+
+For Beer 1993 Q2, verify $(1-B)(1-B^4)y_t = 21$:
+
+```{r}
+y <- aus_production |>
+  filter(Quarter >= yearquarter("1992 Q1"),
+         Quarter <= yearquarter("1993 Q2")) |>
+  pull(Beer)
+n <- length(y)
+y[n] - y[n - 1] - y[n - 4] + y[n - 5]
+```
+
+# Optional hierarchical glimpse (tourism)
+
+```{r}
+tourism_agg <- tourism |>
+  aggregate_key(Purpose, Trips = sum(Trips))
+tourism_agg |>
+  filter(is_aggregated(Purpose)) |>
+  autoplot(Trips) +
+  labs(title = "Australian tourism trips (all purposes)")
+```
+
+# Optional VAR glimpse
+
+```{r}
+fit_var <- us_change |>
+  model(var = VAR(vars(Consumption, Income)))
+fit_var |> forecast(h = 8) |>
+  autoplot(us_change, level = NULL) +
+  labs(title = "VAR(Consumption, Income): 8-quarter forecast")
+```
+
+# Your turn
+
+1. Which model wins on RMSE? Would you still recommend it after looking at residuals?
+2. Name one case where TSLM might beat SARIMA on interpretability even if RMSE is worse.
+3. Write a one-page recommendation memo for Beer forecasts (method + why + risks).

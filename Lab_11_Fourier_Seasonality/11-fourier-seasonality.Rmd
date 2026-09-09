@@ -1,0 +1,113 @@
+---
+title: "Session 11 — Fourier seasonality (R lab)"
+subtitle: "Forecasting for Time Series (PPLEDBA)"
+author: "Prof. Dae-Jin Lee (daelee@faculty.ie.edu)"
+date: "Fall 2026"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
+                      fig.width = 8, fig.height = 4.5)
+```
+
+> **Slides vs lab.** Lecture slides emphasise theory, figures, and hand calculations.
+> This lab is where you **type and run** the tidy `fable` workflow (and check the toy arithmetic).
+
+# Packages
+
+```{r}
+library(fpp3)
+```
+
+# Hand calculations (match the slides)
+
+## Parameter counts: dummies vs Fourier
+
+```{r}
+param_counts <- tibble::tibble(
+  m = c(4, 52),
+  label = c("quarterly", "weekly"),
+  dummies = m - 1,
+  fourier_K1 = 2 * 1,
+  fourier_K2 = 2 * 2
+)
+param_counts
+```
+
+Expect `dummies = 3, 51` and `fourier_K2 = 4, 4` for $m=4,52$ — a $\sim92\%$ reduction at
+$m=52$, $K=2$.
+
+## The Nyquist coincidence at $K = m/2$ (quarterly, $m=4$)
+
+```{r}
+m <- 4
+K <- m / 2
+effective_params <- 2 * K - 1
+c(m = m, K = K, effective_params = effective_params, dummy_params = m - 1)
+```
+
+`effective_params` should equal `dummy_params` (both `3`): at the top harmonic, the sine
+column is identically zero for integer $t$, so it drops out automatically.
+
+# Data: Australian beer production
+
+```{r}
+beer <- aus_production |> filter(!is.na(Beer))
+beer |> autoplot(Beer) + labs(title = "Australian beer production")
+```
+
+# Season vs Fourier K = 1, 2
+
+```{r}
+fit <- beer |>
+  model(
+    dummies = TSLM(Beer ~ trend() + season()),
+    f1 = TSLM(Beer ~ trend() + fourier(K = 1)),
+    f2 = TSLM(Beer ~ trend() + fourier(K = 2))
+  )
+glance(fit) |> select(.model, AICc) |> arrange(AICc)
+```
+
+Confirm `dummies` and `f2` have (numerically) the same AICc — same fitted values in two
+different bases, as predicted by the Nyquist argument above.
+
+```{r}
+fitted_wide <- fit |> select(dummies, f2) |>
+  augment() |>
+  as_tibble() |>
+  select(.model, Quarter, .fitted) |>
+  tidyr::pivot_wider(names_from = .model, values_from = .fitted)
+max(abs(fitted_wide$dummies - fitted_wide$f2))
+```
+
+This maximum absolute difference should be tiny (numerical noise only).
+
+```{r}
+fit |> forecast(h = "3 years") |> autoplot(beer, level = NULL) +
+  labs(title = "Dummies vs Fourier K = 1, 2")
+```
+
+# Residual seasonality check
+
+```{r}
+fit |> select(f1) |> gg_tsresiduals()
+```
+
+# Weekly-style discussion
+
+For $m=52$, $K=2$ needs 4 parameters versus 51 dummy columns. Dynamic harmonic regression
+(Session 12) combines a small-$K$ Fourier seasonal term with ARIMA errors for the
+remaining short-run dynamics — this is the standard approach for weekly series with
+annual seasonality.
+
+# Your turn
+
+1. Compute the parameter-count table for $m=7$ (daily-of-week) and $m=365$ (daily-of-year).
+2. For Beer, does `f1` show more residual seasonality than `f2` in `gg_tsresiduals()`? Explain using the
+   parameter-count argument.
+3. At what $K$ would you stop increasing harmonics for a weekly series, and why (hint: AICc plateau)?

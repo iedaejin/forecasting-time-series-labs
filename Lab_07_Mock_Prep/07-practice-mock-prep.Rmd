@@ -1,0 +1,167 @@
+---
+title: "Session 7 — Timed Practice Problems"
+subtitle: "Forecasting for Time Series (PPLEDBA)"
+author: "Prof. Dae-Jin Lee (daelee@faculty.ie.edu)"
+date: "Fall 2026"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: flatly
+---
+
+> **Slides vs lab.** Theory and figures live on the slides. This lab is for runnable code.
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
+                      fig.width = 8, fig.height = 4.5)
+```
+
+# How to use this lab
+
+Simulate exam conditions: set a timer for each problem, work without looking up
+documentation, and write your answer as a comment **before** checking it runs.
+Solutions are not included here - see the instructor debrief / posted notes after
+Session 7.
+
+Fixed splits used elsewhere in the course (for consistency):
+Beer train through `2007 Q4`; Spain GDP train `Year <= 2010`.
+
+```{r}
+library(fpp3)
+```
+
+---
+
+# Problem 1 (10 min) — Reading a report() output
+
+```{r}
+fit <- aus_production |>
+  filter(!is.na(Cement)) |>
+  model(ets = ETS(Cement))
+
+report(fit)
+```
+
+**Answer without re-running the code differently:**
+
+1. What is the fitted ETS(E,T,S) form, in words (error/trend/season)?
+2. Name the two smoothing parameters shown and, in one sentence each, what a value
+   close to 1 vs. close to 0 would mean for that parameter.
+3. Is `AICc` or `sigma2` the quantity you'd use to compare this model against a
+   *different* ETS specification on the same series?
+
+```{r}
+# Your written answers as comments
+
+```
+
+---
+
+# Problem 2 (10 min) — Differencing decision
+
+```{r}
+h02 <- global_economy |>
+  filter(Code == "USA") |>
+  select(Year, GDP) |>
+  mutate(log_gdp = log(GDP))
+
+h02 |>
+  features(log_gdp, unitroot_ndiffs)
+
+h02 |> gg_tsdisplay(difference(log_gdp), plot_type = "partial")
+```
+
+**Answer:**
+
+1. How many ordinary differences does `unitroot_ndiffs` recommend?
+2. Based on the ACF/PACF of the differenced series, propose one candidate
+   `(p, d, q)`.
+3. Write the fitted model equation in backshift-operator notation for your proposal
+   (use $c$ for a constant/drift term if relevant).
+
+```{r}
+# Your written answers as comments
+
+```
+
+---
+
+# Problem 3 (10 min) — AICc table under time pressure
+
+```{r}
+fit3 <- aus_production |>
+  filter(!is.na(Beer)) |>
+  model(
+    snaive    = SNAIVE(Beer),
+    ets_auto  = ETS(Beer),
+    arima_auto = ARIMA(Beer)
+  )
+
+glance(fit3) |> select(.model, AICc, BIC)
+```
+
+**Answer:**
+
+1. Why can't you directly compare the ETS row's AICc to the ARIMA row's AICc here?
+2. What *can* you compare across all three rows to make a fair final decision?
+3. Compute that fair comparison (write the code) and report the winner.
+
+```{r}
+# Your code + written answer
+
+```
+
+---
+
+# Problem 4 (10 min) — ARMA identification speed round
+
+```{r}
+pelt |> gg_tsdisplay(Lynx, plot_type = "partial")
+```
+
+**Answer:**
+
+1. From the ACF/PACF shapes alone, propose an AR order, MA order, or say "ARMA,
+   can't tell by eye — let `ARIMA()` search."
+2. Fit your proposal and `ARIMA(Lynx)` (auto). How far off was your guess on AICc?
+
+```{r}
+# Your code + written answer
+
+```
+
+---
+
+# Problem 5 (10 min) — Interpret accuracy() output
+
+```{r}
+train5 <- aus_production |> filter(!is.na(Beer), Quarter <= max(Quarter) - 8)
+test5  <- aus_production |> filter(!is.na(Beer))
+
+fit5 <- train5 |> model(ets = ETS(Beer), arima = ARIMA(Beer), snaive = SNAIVE(Beer))
+
+fit5 |> forecast(h = 8) |> accuracy(test5)
+```
+
+**Answer:**
+
+1. Which model has the lowest test-set RMSE? The lowest MAPE? Are they the same model?
+2. If RMSE and MAPE disagree on the "best" model, which would you report to a
+   stakeholder who cares about percentage error, and why?
+3. Is beating `SNAIVE` on this holdout enough, by itself, to justify using the more
+   complex model in production? What else would you want to check?
+
+```{r}
+# Your written answers as comments
+
+```
+
+---
+
+# Self-check
+
+Total suggested time: ~50 minutes for 5 problems (matches roughly two-thirds of the
+mock's calculation/R-output time budget). Note which problems took longer than
+their suggested time — that's exactly where to focus remaining study time.

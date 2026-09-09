@@ -1,0 +1,98 @@
+---
+title: "Session 12 — Dynamic regression (R lab)"
+subtitle: "Forecasting for Time Series (PPLEDBA)"
+author: "Prof. Dae-Jin Lee (daelee@faculty.ie.edu)"
+date: "Fall 2026"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
+                      fig.width = 8, fig.height = 4.5)
+```
+
+> **Slides vs lab.** Lecture slides emphasise theory, figures, and hand calculations.
+> This lab is where you **type and run** the tidy `fable` workflow (and check the toy arithmetic).
+
+# Packages
+
+```{r}
+library(fpp3)
+```
+
+# Hand calculations (match the slides)
+
+## Toy distributed-lag model
+
+$y_t = 0.5 + 0.3 x_t + 0.2 x_{t-1}$, $x_0 = 1$, $x = (1, 2, 1.5, 2.5)$.
+
+```{r}
+x <- c(1, 2, 1.5, 2.5)
+x_lag <- dplyr::lag(x, default = 1)  # x0 = 1 (pre-sample)
+y <- 0.5 + 0.3 * x + 0.2 * x_lag
+tibble::tibble(t = 1:4, x = x, x_lag = x_lag, y = y)
+```
+
+Expected `y`: `1.00, 1.30, 1.35, 1.55`. Total eventual effect of a permanent $+1$ change in
+Income: $0.3 + 0.2 = 0.5$.
+
+# Data: US consumption & income
+
+```{r}
+us_change |> autoplot(vars(Consumption, Income)) +
+  labs(title = "US consumption & income growth")
+```
+
+# TSLM vs regression with ARIMA errors
+
+```{r}
+fit <- us_change |>
+  model(
+    lm = TSLM(Consumption ~ Income),
+    dyn = ARIMA(Consumption ~ Income + PDQ(0, 0, 0))
+  )
+glance(fit) |> select(.model, AICc)
+report(fit |> select(dyn))
+# Coefficients as numbers (match the slide table --- no barplot)
+tidy(fit |> select(dyn)) |>
+  filter(term != "sigma2") |>
+  select(term, estimate, std.error, statistic, p.value)
+```
+
+```{r}
+fit |> select(lm) |> gg_tsresiduals()
+fit |> select(dyn) |> gg_tsresiduals()
+```
+
+Compare the two residual ACF panels: `dyn` should look much closer to white noise than `lm`.
+
+# Forecasting with a future-Income path
+
+We assume Income holds at its recent average for the next 8 quarters (a simple,
+explicit scenario - not a prediction) and forecast Consumption from the dynamic
+regression model.
+
+```{r}
+future_income <- new_data(us_change, 8) |>
+  mutate(Income = mean(tail(us_change$Income, 8)))
+
+fc_dyn <- forecast(fit |> select(dyn), new_data = future_income)
+fc_dyn
+
+fc_dyn |>
+  autoplot(us_change |> filter_index("2015 Q1" ~ .), level = NULL) +
+  labs(title = "Dynamic regression forecast (Income at recent average)")
+```
+
+# Your turn
+
+1. Add `Savings` to the dynamic regression (`ARIMA(Consumption ~ Income + Savings + PDQ(0,0,0))`);
+   does the residual ACF improve further?
+2. Build a second future-Income scenario (e.g. $+1\%$ per quarter compounding) and compare the
+   resulting forecast band with the "hold flat" scenario above.
+3. Outline Assignment A2 for your group: which regressors, what lag structure, what future-$x$
+   assumption will you use?

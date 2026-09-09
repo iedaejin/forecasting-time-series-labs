@@ -1,0 +1,127 @@
+---
+title: "Session 10 — Time series regression (2/2) (R lab)"
+subtitle: "Forecasting for Time Series (PPLEDBA)"
+author: "Prof. Dae-Jin Lee (daelee@faculty.ie.edu)"
+date: "Fall 2026"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
+                      fig.width = 8, fig.height = 4.5)
+```
+
+> **Slides vs lab.** Lecture slides emphasise theory, figures, and hand calculations.
+> This lab is where you **type and run** the tidy `fable` workflow (and check the toy arithmetic).
+
+# Packages
+
+```{r}
+library(fpp3)
+```
+
+# Hand calculations (match the slides)
+
+## Nested models: from AICc to relative likelihood
+
+```{r}
+fit <- us_change |>
+  model(
+    lm1 = TSLM(Consumption ~ Income),
+    lm2 = TSLM(Consumption ~ Income + Savings + Unemployment),
+    lm3 = TSLM(Consumption ~ Income + Savings)
+  )
+aicc_tab <- glance(fit) |> select(.model, AICc) |> arrange(AICc)
+aicc_tab
+```
+
+```{r}
+best <- min(aicc_tab$AICc)
+aicc_tab |>
+  mutate(delta_AICc = AICc - best,
+         rel_likelihood = exp(-0.5 * delta_AICc))
+```
+
+You should see `lm2` as best (`delta_AICc = 0`, `rel_likelihood = 1`), `lm3` with
+`delta_AICc ~ 18.5` (`rel_likelihood ~ 9.4e-05`), and `lm1` essentially ruled out.
+
+# Data: US consumption growth
+
+```{r}
+us_change |> autoplot(Consumption) + labs(title = "US consumption growth")
+```
+
+```{r}
+report(fit |> select(lm2))
+fit |> select(lm2) |> gg_tsresiduals()
+```
+
+# Scenario forecasts: Income +/-1% for the next 8 quarters
+
+We hold Income at $\pm 1\%$ around its recent average and forecast Consumption from the
+best nested model (`lm2` uses Savings and Unemployment too; here we illustrate the
+Income-only scenario mechanics with a simpler model so only Income needs an assumption).
+
+```{r}
+fit_income <- us_change |> model(lm = TSLM(Consumption ~ Income))
+
+base_income <- mean(tail(us_change$Income, 8))
+
+future_scenarios <- scenarios(
+  Increase = new_data(us_change, 8) |> mutate(Income = 1.01 * base_income),
+  Decrease = new_data(us_change, 8) |> mutate(Income = 0.99 * base_income),
+  names_to = "Scenario"
+)
+
+fc_scenarios <- forecast(fit_income, new_data = future_scenarios)
+fc_scenarios
+
+fc_scenarios |>
+  autoplot(level = NULL) +
+  autolayer(us_change |> filter_index("2015 Q1" ~ .), Consumption) +
+  labs(title = "Consumption forecasts under \u00b11% Income scenarios",
+       y = "Consumption growth (%)")
+```
+
+# Spurious regression demonstration (`set.seed(1)`)
+
+Two **independent** random walks; regress one on the other and inspect the (misleading)
+significance plus the residual ACF tell-tale.
+
+```{r}
+set.seed(1)
+n <- 100
+x <- cumsum(rnorm(n))
+y <- cumsum(rnorm(n))
+
+spurious_fit <- lm(y ~ x)
+summary(spurious_fit)
+```
+
+```{r}
+resid_acf1 <- acf(residuals(spurious_fit), plot = FALSE)$acf[2]
+c(R2 = summary(spurious_fit)$r.squared, resid_acf1 = resid_acf1)
+```
+
+```{r}
+tibble(t = 1:n, x = x, y = y) |>
+  as_tsibble(index = t) |>
+  pivot_longer(c(x, y)) |>
+  autoplot(value) +
+  labs(title = "Two independent random walks (seed = 1)", y = NULL, x = "t")
+```
+
+Expect $R^2 \approx 0.21$, slope $t$-value $\approx -5.1$ ($p \ll 0.001$), and residual
+lag-1 ACF $\approx 0.96$ — despite `x` and `y` being generated with no relationship at all.
+
+# Your turn
+
+1. Drop `Unemployment` from `lm2`; confirm the AICc/relative-likelihood ranking changes as expected.
+2. Re-run the spurious-regression demo with `set.seed(2)`. Does the sign of the slope change? Does the
+   qualitative message (high residual ACF) still hold?
+3. Write two sentences to a stakeholder explaining why the $\pm1\%$ Income scenarios are assumptions,
+   not predictions.

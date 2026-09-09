@@ -1,0 +1,96 @@
+---
+title: "Session 4 — Non-seasonal ARIMA (R lab)"
+subtitle: "Forecasting for Time Series (PPLEDBA)"
+author: "Prof. Dae-Jin Lee (daelee@faculty.ie.edu)"
+date: "Fall 2026"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
+                      fig.width = 8, fig.height = 4.5)
+```
+
+> **Slides vs lab.** Lecture slides emphasise theory, figures, and hand calculations.  
+> This lab is where you **type and run** the tidy `fable` workflow (and check the toy arithmetic).
+
+# Packages
+
+```{r}
+library(fpp3)
+```
+
+# Hand calculations (match the slides)
+
+ARIMA(1,1,0): $\nabla y_t = 0.2 + 0.5\,\nabla y_{t-1}$.  
+Levels $y = (10, 12, 11, 14, 13)$.
+
+```{r}
+y <- c(10, 12, 11, 14, 13)
+dy <- diff(y)
+phi <- 0.5
+c0 <- 0.2
+# one-step predictions of differences for t = 3,4,5 (indices 2,3,4 of dy)
+pred_dy <- c0 + phi * dplyr::lag(dy)
+level_fcast <- y[-length(y)] + pred_dy
+tibble::tibble(
+  t = 2:5,
+  dy = dy,
+  pred_dy = pred_dy,
+  y_prev = y[-length(y)],
+  yhat = level_fcast,
+  y = y[-1]
+)
+```
+
+Check $t=5$: $\widehat{\nabla y}_5 = 1.7$, $\hat y_5 = 15.7$.
+
+# Spain GDP
+
+```{r}
+spain <- global_economy |> filter(Country == "Spain")
+spain |> autoplot(GDP) + scale_y_log10() +
+  labs(title = "Spain GDP (log scale)", y = "GDP")
+
+spain |>
+  mutate(g = difference(log(GDP))) |>
+  autoplot(g) +
+  labs(title = "Growth rates: diff log(GDP)", y = NULL)
+```
+
+# Train / test split (origin 2010)
+
+```{r}
+train <- spain |> filter(Year <= 2010)
+test <- spain |> filter(Year > 2010)
+
+fit <- train |>
+  model(
+    rw = RW(log(GDP) ~ drift()),
+    arima_auto = ARIMA(log(GDP) ~ PDQ(0, 0, 0)),
+    arima_110 = ARIMA(log(GDP) ~ pdq(1, 1, 0) + PDQ(0, 0, 0))
+  )
+
+glance(fit) |> arrange(AICc)
+fc <- fit |> forecast(h = nrow(test))
+# Evaluate against the full series (fable convention used on the slides)
+accuracy(fc, spain) |> arrange(RMSE)
+fc |> autoplot(spain, level = NULL) +
+  labs(title = "Spain GDP forecasts (trained <= 2010)")
+```
+
+# Residuals
+
+```{r}
+fit |> select(arima_auto) |> gg_tsresiduals()
+```
+
+# Your turn
+
+1. Repeat for another country in `global_economy`.
+2. Force $d=0$ vs $d=1$ and compare residual ACF + test RMSE.
+3. Write 3 sentences recommending a model to a policy analyst.

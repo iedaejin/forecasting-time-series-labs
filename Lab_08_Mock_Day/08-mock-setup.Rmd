@@ -1,0 +1,104 @@
+---
+title: "Session 8 — Recreating practice-mock R output"
+subtitle: "Forecasting for Time Series (PPLEDBA)"
+author: "Prof. Dae-Jin Lee (daelee@faculty.ie.edu)"
+date: "Fall 2026"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: flatly
+---
+
+> **Slides vs lab.** Theory and figures live on the slides. This lab is for runnable code.
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
+                      fig.width = 8, fig.height = 4.5)
+```
+
+# Purpose
+
+This (optional) notebook recreates R output **in the same style** as
+`readings/08-practice-midterm.md` Section C, so you can:
+
+- see how `report()`, `glance()`/`accuracy()`, and residual diagnostics are actually
+  produced (not just read as printed text), and
+- practice generating and reading this kind of output yourself before the exam.
+
+The exact numbers below will **not** match the practice mock exactly (different
+series were used to build that document) — the point is to practice the *workflow*
+of producing and reading this output, not to reverse-engineer the practice exam.
+
+```{r}
+library(fpp3)
+```
+
+---
+
+# Recreating a `report()`-style output (like Section C1)
+
+```{r}
+fit_c1 <- aus_retail |>
+  filter(State == "Victoria", Industry == "Department stores") |>
+  summarise(Turnover = sum(Turnover)) |>
+  model(ets = ETS(Turnover))
+
+report(fit_c1)
+```
+
+**Practice:** without looking at the numbers above ahead of time, write down (i) the
+ETS(E,T,S) form, (ii) what $\alpha$ tells you about level updating, (iii) which
+information criterion you'd use to compare this to another ETS spec on the same
+series. Then check yourself against the printed output.
+
+---
+
+# Recreating an `accuracy()`-style comparison (like Section C2)
+
+```{r}
+train_c2 <- aus_retail |>
+  filter(State == "Victoria", Industry == "Department stores") |>
+  summarise(Turnover = sum(Turnover)) |>
+  filter(Month <= max(Month) - 24)
+
+test_c2 <- aus_retail |>
+  filter(State == "Victoria", Industry == "Department stores") |>
+  summarise(Turnover = sum(Turnover))
+
+fit_c2 <- train_c2 |>
+  model(snaive = SNAIVE(Turnover), ets = ETS(Turnover), arima = ARIMA(Turnover))
+
+fit_c2 |> forecast(h = 24) |> accuracy(test_c2)
+```
+
+**Practice:** which model wins on RMSE? On MAPE? What does the MASE column tell you
+relative to the seasonal naive benchmark? (Same questions as Section C2 — different
+series/numbers.)
+
+---
+
+# Recreating a residual-diagnostics check (like Section C3)
+
+```{r}
+fit_c2 |>
+  select(arima) |>
+  gg_tsresiduals()
+
+augment(fit_c2) |>
+  filter(.model == "arima") |>
+  features(.innov, ljung_box, lag = 24, dof = 4)
+```
+
+**Practice:** based on the ACF plot and the Ljung–Box `p_value`, are these residuals
+consistent with white noise? What would you do next if not?
+
+---
+
+# After you've tried it yourself
+
+Compare your written answers against the instructor debrief. If your interpretation
+of any of `report()`, `accuracy()`, or `gg_tsresiduals()` output didn't match, that's
+exactly the kind of gap Section C of the exam is designed to probe — revisit
+`readings/07-readings.md` before the mock.

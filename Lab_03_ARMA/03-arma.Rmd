@@ -1,0 +1,140 @@
+---
+title: "Session 3 — ARMA processes (R lab)"
+subtitle: "Forecasting for Time Series (PPLEDBA)"
+author: "Prof. Dae-Jin Lee (daelee@faculty.ie.edu)"
+date: "Fall 2026"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
+                      fig.width = 8, fig.height = 4.5)
+```
+
+> **Slides vs lab.** Lecture slides emphasise theory, figures, and hand calculations.  
+> This lab is where you **type and run** the tidy `fable` workflow (and check the toy arithmetic).
+
+# Packages
+
+```{r}
+library(fpp3)
+```
+
+# Hand calculations (match the slides)
+
+## AR(1) recursion
+
+$\phi = 0.5$, $y_0 = 0$, $\varepsilon = (2, -1, 1.5, -0.5)$.
+
+```{r}
+phi <- 0.5
+eps <- c(2, -1, 1.5, -0.5)
+y <- numeric(4)
+y[1] <- phi * 0 + eps[1]
+for (t in 2:4) y[t] <- phi * y[t - 1] + eps[t]
+tibble::tibble(t = 1:4, eps = eps, y = y)
+```
+
+Expected $y$: `2, 0, 1.5, 0.25`.
+
+## MA(1) ACF formula
+
+```{r}
+theta <- 0.8
+rho1 <- theta / (1 + theta^2)
+c(theta = theta, rho1 = rho1)
+```
+
+Expected $\rho_1 \approx 0.488$.
+
+## MA(1) path
+
+$\theta = 0.5$, $\varepsilon = (1, -2, 0.5, 1)$.
+
+```{r}
+theta <- 0.5
+eps <- c(1, -2, 0.5, 1)
+y <- eps + theta * dplyr::lag(eps, default = 0)
+tibble::tibble(t = 1:4, eps = eps, y = y)
+```
+
+Expected $y$: `1, -1.5, -0.5, 1.25`.
+
+# Simulate AR(1) and MA(1)
+
+```{r}
+set.seed(42)
+n <- 300
+e <- rnorm(n)
+
+phi <- 0.8
+yar <- numeric(n)
+for (t in 2:n) yar[t] <- phi * yar[t - 1] + e[t]
+
+theta <- 0.8
+yma <- e + theta * dplyr::lag(e, default = 0)
+
+sim <- tibble(index = 1:n, AR1 = yar, MA1 = yma) |>
+  as_tsibble(index = index)
+
+sim |> gg_tsdisplay(AR1, plot_type = "partial") + labs(title = "AR(1), phi = 0.8")
+sim |> gg_tsdisplay(MA1, plot_type = "partial") + labs(title = "MA(1), theta = 0.8")
+```
+
+# Persistence: phi = 0.4 vs 0.9 (same shocks)
+
+```{r}
+set.seed(42)
+e <- rnorm(200)
+sim_phi <- function(phi) {
+  y <- numeric(200)
+  for (t in 2:200) y[t] <- phi * y[t - 1] + e[t]
+  y
+}
+tibble(index = 1:200, lo = sim_phi(0.4), hi = sim_phi(0.9)) |>
+  as_tsibble(index = index) |>
+  pivot_longer(-index) |>
+  autoplot(value) +
+  facet_wrap(~name, ncol = 1, scales = "free_y") +
+  labs(title = "Same shocks; different phi", y = NULL)
+```
+
+# Fit ARMA to Canadian lynx
+
+```{r}
+pelt |> autoplot(Lynx) + labs(title = "Canadian lynx (pelt)")
+fit <- pelt |> model(
+  ar2 = ARIMA(Lynx ~ pdq(2, 0, 0) + PDQ(0, 0, 0)),
+  arma11 = ARIMA(Lynx ~ pdq(1, 0, 1) + PDQ(0, 0, 0)),
+  auto = ARIMA(Lynx ~ PDQ(0, 0, 0))
+)
+glance(fit) |> arrange(AICc)
+fit |> select(auto) |> gg_tsresiduals()
+```
+
+# Your turn
+
+## AR(2) simulation and PACF cutoff
+
+```{r}
+set.seed(7)
+n <- 300
+e <- rnorm(n)
+phi1 <- 1.3
+phi2 <- -0.7
+y2 <- numeric(n)
+for (t in 3:n) {
+  y2[t] <- phi1 * y2[t - 1] + phi2 * y2[t - 2] + e[t]
+}
+tibble(index = 1:n, AR2 = y2) |>
+  as_tsibble(index = index) |>
+  gg_tsdisplay(AR2, plot_type = "partial") +
+  labs(title = "AR(2): expect PACF cutoff after lag 2")
+```
+
+1. Blind identification: partner simulates AR or MA; you guess from ACF/PACF.
+2. For `pelt$Lynx`, confirm AICc ranking of AR(2) vs ARMA(1,1) vs auto (above).
