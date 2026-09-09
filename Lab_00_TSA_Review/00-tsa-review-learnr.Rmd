@@ -297,14 +297,11 @@ grade_this({
 
 Submit a **`.txt` completion file** to Blackboard Ultra — **not** HTML.
 
-The RStudio Viewer often breaks Shiny downloads (you may see `dl_lab00.html` / "Site wasn't available").  
-**Use the Save button below** — it writes a real `.txt` to your Downloads folder.
-
 1. Enter your details.
-2. Click **Save .txt to Downloads**.
-3. Upload that `Lab00_TSA_Review_....txt` file to Blackboard.
+2. Click **Generate .txt evidence**.
+3. Upload the saved `.txt` (path shown below), or copy the preview into a `.txt` file.
 
-Do **not** upload `00-tsa-review-learnr.html` or `dl_lab00.html`.
+Do **not** upload `00-tsa-review-learnr.html` or any `dl_lab00.html`.
 
 ```{r receipt-ui, context="render"}
 shiny::tagList(
@@ -314,14 +311,17 @@ shiny::tagList(
   shiny::br(),
   shiny::actionButton(
     "write_lab00",
-    "Save .txt to Downloads",
+    "Generate .txt evidence",
     class = "btn-primary btn-lg"
   ),
   shiny::br(), shiny::br(),
   shiny::verbatimTextOutput("write_lab00_msg"),
   shiny::tags$hr(),
-  shiny::tags$p(shiny::tags$strong("Fallback:"), " copy the text below into a file named ",
-                shiny::tags$code("Lab00_TSA_Review_YourName.txt"), " and upload that."),
+  shiny::tags$p(
+    shiny::tags$strong("Preview / copy-paste fallback"),
+    " — if no file appears, copy this into ",
+    shiny::tags$code("Lab00_TSA_Review_YourName.txt")
+  ),
   shiny::verbatimTextOutput("receipt_preview")
 )
 ```
@@ -337,39 +337,69 @@ expected_steps <- c(
   "q-acf", "q-snaive", "q-ses", "q-gas"
 )
 
-build_receipt_txt <- function(name, stu_id, stu_section) {
-  state <- shiny::isolate(
-    shiny::reactiveValuesToList(learnr::get_tutorial_state())
-  )
-  info <- tryCatch(
-    learnr::get_tutorial_info(),
-    error = function(e) list(tutorial_id = "00-tsa-review-learnr")
-  )
+receipt_filename <- function(name) {
+  nm <- gsub("[^A-Za-z0-9._-]+", "_", trimws(name %||% "student"))
+  if (!nzchar(nm)) nm <- "student"
+  paste0("Lab00_TSA_Review_", nm, ".txt")
+}
 
-  done <- intersect(expected_steps, names(state))
-  missing <- setdiff(expected_steps, names(state))
+# Avoid ~/Downloads (can hang RStudio on macOS permissions).
+safe_out_dir <- function() {
+  # 1) folder of the open Rmd in RStudio, if available
+  d <- tryCatch({
+    if (requireNamespace("rstudioapi", quietly = TRUE) &&
+        rstudioapi::isAvailable()) {
+      ctx <- rstudioapi::getActiveDocumentContext()
+      if (!is.null(ctx) && nzchar(ctx$path %||% "")) dirname(ctx$path) else NA_character_
+    } else {
+      NA_character_
+    }
+  }, error = function(e) NA_character_)
 
-  lines_done <- if (length(done)) {
-    vapply(sort(done), function(lab) {
-      item <- state[[lab]]
-      sprintf(
-        "- %s [%s] submitted @ %s",
-        lab,
-        item$type %||% "?",
-        item$timestamp %||% ""
-      )
-    }, character(1))
-  } else {
-    "- (no submissions recorded yet — finish exercises/quizzes, then Save again)"
+  candidates <- c(
+    d,
+    path.expand("~/Documents"),
+    path.expand("~"),
+    tempdir()
+  )
+  candidates <- unique(candidates[!is.na(candidates) & nzchar(candidates)])
+  for (dir in candidates) {
+    ok <- isTRUE(tryCatch({
+      dir.exists(dir) && file.access(dir, 2L) == 0L
+    }, error = function(e) FALSE))
+    if (ok) return(dir)
   }
+  tempdir()
+}
 
-  lines_missing <- if (length(missing)) paste0("- ", missing) else "- (none)"
+build_receipt_txt <- function(name, stu_id, stu_section) {
+  done <- character(0)
+  lines_done <- "- (progress unavailable in this session)"
+  lines_missing <- paste0("- ", expected_steps)
+
+  tryCatch({
+    state <- shiny::reactiveValuesToList(learnr::get_tutorial_state())
+    done <<- intersect(expected_steps, names(state))
+    missing <- setdiff(expected_steps, names(state))
+    if (length(done)) {
+      lines_done <<- vapply(sort(done), function(lab) {
+        ts <- tryCatch(state[[lab]]$timestamp %||% "", error = function(e) "")
+        tp <- tryCatch(state[[lab]]$type %||% "?", error = function(e) "?")
+        sprintf("- %s [%s] submitted @ %s", lab, tp, ts)
+      }, character(1))
+    } else {
+      lines_done <<- "- (no submissions recorded yet)"
+    }
+    lines_missing <<- if (length(missing)) paste0("- ", missing) else "- (none)"
+  }, error = function(e) {
+    lines_done <<- paste0("- (could not read tutorial progress: ", e$message, ")")
+  })
+
   stamp <- format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z")
-
   c(
     "Lab 0 — TSA review (learnr) — COMPLETION EVIDENCE",
     "Course: Forecasting for Time Series (PPLEDBA), Fall 2026",
-    sprintf("Tutorial: %s", info$tutorial_id %||% "00-tsa-review-learnr"),
+    "Tutorial: 00-tsa-review-learnr",
     "FILE_TYPE: plain text (.txt) — do not submit HTML",
     "Purpose: proof of completion for Blackboard Ultra",
     "SUBMIT_TO: Blackboard Ultra — Lab 0 assignment",
@@ -392,26 +422,8 @@ build_receipt_txt <- function(name, stu_id, stu_section) {
   )
 }
 
-receipt_filename <- function(name) {
-  nm <- gsub("[^A-Za-z0-9._-]+", "_", trimws(name %||% "student"))
-  if (!nzchar(nm)) nm <- "student"
-  paste0("Lab00_TSA_Review_", nm, ".txt")
-}
-
-receipt_dir <- function() {
-  candidates <- c(
-    path.expand("~/Downloads"),
-    path.expand("~/Desktop"),
-    path.expand("~")
-  )
-  for (d in candidates) {
-    if (dir.exists(d) && file.access(d, 2) == 0) return(d)
-  }
-  getwd()
-}
-
-write_msg <- shiny::reactiveVal("Enter your name, then click Save .txt to Downloads.")
-preview_txt <- shiny::reactiveVal("(Save once to refresh this preview, or fill your name and click Save.)")
+write_msg <- shiny::reactiveVal("Fill your name, then click Generate .txt evidence.")
+preview_txt <- shiny::reactiveVal("(Click the button to generate the evidence text.)")
 
 output$write_lab00_msg <- shiny::renderText(write_msg())
 output$receipt_preview <- shiny::renderText(preview_txt())
@@ -423,22 +435,47 @@ shiny::observeEvent(input$write_lab00, {
     return()
   }
 
-  txt <- build_receipt_txt(
-    name,
-    trimws(input$stu_id %||% ""),
-    trimws(input$stu_section %||% "")
+  # 1) Build text first (always — even if disk write fails)
+  txt <- tryCatch(
+    build_receipt_txt(
+      name,
+      trimws(input$stu_id %||% ""),
+      trimws(input$stu_section %||% "")
+    ),
+    error = function(e) {
+      c(
+        "Lab 0 — COMPLETION EVIDENCE (minimal)",
+        sprintf("Full name: %s", name),
+        sprintf("Student ID / email: %s", trimws(input$stu_id %||% "")),
+        sprintf("Exported at: %s", format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z")),
+        paste("Note: full progress list failed:", e$message)
+      )
+    }
   )
-  fname <- receipt_filename(name)
-  path <- file.path(receipt_dir(), fname)
-  writeLines(txt, path, useBytes = FALSE)
-
   preview_txt(paste(txt, collapse = "\n"))
-  write_msg(paste0(
-    "Saved plain-text evidence (.txt):\n",
-    normalizePath(path, winslash = "/", mustWork = FALSE),
-    "\n\nUpload THIS .txt to Blackboard. Ignore any dl_lab00.html download."
-  ))
-})
+
+  # 2) Write to a safe folder (not Downloads)
+  out <- tryCatch({
+    dir <- safe_out_dir()
+    path <- file.path(dir, receipt_filename(name))
+    writeLines(txt, path, useBytes = FALSE)
+    normalizePath(path, winslash = "/", mustWork = FALSE)
+  }, error = function(e) {
+    paste0("WRITE_FAILED: ", e$message)
+  })
+
+  if (startsWith(out, "WRITE_FAILED")) {
+    write_msg(paste0(
+      out,
+      "\nCopy the preview below into a .txt file and upload that to Blackboard."
+    ))
+  } else {
+    write_msg(paste0(
+      "Saved plain-text evidence:\n", out,
+      "\nUpload this .txt to Blackboard Ultra."
+    ))
+  }
+}, ignoreInit = TRUE)
 ```
 
 Companion static lab: [`00-tsa-review.Rmd`](00-tsa-review.Rmd).
