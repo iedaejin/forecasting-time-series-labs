@@ -98,7 +98,7 @@ consistent with white noise? What would you do next if not?
 
 # After you've tried it yourself
 
-Compare your written answers against the instructor debrief. If your interpretation
+Compare your written answers against the class debrief. If your interpretation
 of any of `report()`, `accuracy()`, or `gg_tsresiduals()` output didn't match, that's
 exactly the kind of gap Section C of the exam is designed to probe — revisit
 `readings/07-readings.md` before the mock.

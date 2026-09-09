@@ -293,7 +293,7 @@ grade_this({
 2. Click **Download completion .txt for Blackboard**.
 3. **Upload that `.txt` to Blackboard** (Lab 0 assignment / dropbox).
 
-Inside this tutorial, quizzes/exercises are already checked by **gradethis**. Blackboard records the upload; grading of the receipt is done by your instructor.
+Inside this tutorial, quizzes/exercises are already checked by **gradethis**. Upload the `.txt` receipt to Blackboard as instructed.
 
 ```{r receipt-ui, context="render"}
 shiny::tagList(

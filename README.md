@@ -2,6 +2,8 @@
 
 **Student GitHub repo:** https://github.com/iedaejin/forecasting-time-series-labs
 
+This repository is **for students only**. Do not add instructor keys, graders, answer banks, or private notes here.
+
 These are the student R labs for **Forecasting for Time Series** (PPLEDBA). Use **Posit Cloud** or local RStudio.
 
 ## Workflow
@@ -14,6 +16,9 @@ These are the student R labs for **Forecasting for Time Series** (PPLEDBA). Use 
 ## Packages
 ```r
 install.packages("fpp3")
+install.packages(c("learnr", "remotes"))
+# install.packages("remotes")
+remotes::install_github("rstudio/gradethis")
 install.packages("fable.prophet")  # Lab 13 / Session 13 (needs Stan toolchain)
 library(fpp3)
 ```

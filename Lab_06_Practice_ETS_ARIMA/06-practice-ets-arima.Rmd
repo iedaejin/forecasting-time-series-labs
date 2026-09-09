@@ -24,7 +24,7 @@ knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
 # Before you start
 
 This lab has **5 exercises**. Solutions are **not** included here — work through
-them in class (pairs/groups), then compare against the instructor's debrief.
+them in class (pairs/groups), then compare against the class debrief.
 Each exercise follows the same pipeline used in Session 1--5:
 
 > plot → transform? → difference? → ACF/PACF → fit ETS & ARIMA candidates → compare → diagnose

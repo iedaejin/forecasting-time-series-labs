@@ -22,7 +22,7 @@ knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
 
 Simulate exam conditions: set a timer for each problem, work without looking up
 documentation, and write your answer as a comment **before** checking it runs.
-Solutions are not included here - see the instructor debrief / posted notes after
+Solutions are not included here — see the class debrief / posted notes after
 Session 7.
 
 Fixed splits used elsewhere in the course (for consistency):

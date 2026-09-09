@@ -8,7 +8,10 @@
 ## Run the learnr locally
 
 ```r
-install.packages(c("learnr", "gradethis", "fpp3"))
+install.packages(c("learnr", "remotes", "fpp3"))
+# install.packages("remotes")
+remotes::install_github("rstudio/gradethis")
+
 # In RStudio: open 00-tsa-review-learnr.Rmd → Run Document
 rmarkdown::run("00-tsa-review-learnr.Rmd")
 ```
