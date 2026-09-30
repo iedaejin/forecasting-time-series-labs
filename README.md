@@ -8,8 +8,19 @@ These are the student R labs for **Forecasting for Time Series** (PPLEDBA). Use 
 
 ## Workflow
 1. Open one lab folder (e.g. `Lab_00_TSA_Review`).
-2. Open the `.Rmd` file, work through it, and **Knit** to HTML.
-3. Submit the knitted HTML (or `.Rmd` + HTML) per LMS instructions.
+2. Prefer `tutorial.Rmd` when present (**Run Document** — needs `learnr`). Otherwise open the session `.Rmd` and **Knit** to HTML.
+3. Submit the learnr `.txt` download and/or knitted HTML per LMS instructions.
+
+### learnr labs (MIR-style)
+| Folder | Interactive file |
+|--------|------------------|
+| `Lab_01_ETS_AIC` | `tutorial.Rmd` (+ `lab_submission.R`) |
+
+```r
+install.packages(c("learnr", "fpp3"))
+# From the lab folder:
+rmarkdown::run("tutorial.Rmd")
+```
 
 **Lab 0 interactive:** `Lab_00_TSA_Review/00-tsa-review-learnr.Rmd` — open in RStudio and **Run Document** (needs `learnr` + `gradethis` + `fpp3`).
 

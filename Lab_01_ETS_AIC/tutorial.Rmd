@@ -1,0 +1,198 @@
+---
+title: "Lab 01 — ETS and AIC"
+subtitle: "Forecasting for Time Series (PPLEDBA)"
+author: "Prof. Dae-Jin Lee (daelee@faculty.ie.edu)"
+output: learnr::tutorial
+runtime: shiny_prerendered
+---
+
+```{r setup, include=FALSE}
+library(learnr)
+library(fpp3)
+knitr::opts_chunk$set(
+  echo = FALSE, message = FALSE, warning = FALSE,
+  fig.width = 8, fig.height = 4
+)
+source("lab_submission.R")
+
+beer <- aus_production |>
+  filter(!is.na(Beer)) |>
+  select(Quarter, Beer)
+
+lab_meta <- list(id = "lab01", title = "ETS and AIC")
+lab_prompts <- c(
+  q1 = "SES: y=(10,12,11,13), α=0.5, ℓ₀=10. What is ℓ₄?",
+  q2 = "Beer seasonal amplitude looks roughly stable. Prefer additive or multiplicative season?",
+  q3 = "In the ETS taxonomy, SES is which triple (Error, Trend, Season)?",
+  q4 = "Why should you not choose between ETS and ARIMA using AICc alone?",
+  q5 = "In one or two sentences, recommend a Beer forecast method to a brewery planner (name the method and one reason)."
+)
+```
+
+## What you will do
+
+Reactivate pattern reading, check SES arithmetic, fit ETS with `fpp3`, and compare models with AICc **and** hold-out accuracy. At the end, download a `.txt` and upload it per LMS instructions.
+
+Packages (Posit Cloud / local): `fpp3`, `learnr`. Open this file and click **Run Document**.
+
+## SES warm-up
+
+Data: $y=(10,12,11,13)$, $\alpha=0.5$, $\ell_0=10$. Complete / run the recursion.
+
+```{r ses-ex, exercise=TRUE, exercise.lines=12}
+y <- c(10, 12, 11, 13)
+alpha <- 0.5
+ell <- numeric(4)
+ell0 <- 10
+ell[1] <- alpha * y[1] + (1 - alpha) * ell0
+for (t in 2:4) {
+  ell[t] <- alpha * y[t] + (1 - alpha) * ell[t - 1]
+}
+tibble(t = 1:4, y = y, level = ell)
+```
+
+```{r q1}
+question(
+  lab_prompts[["q1"]],
+  answer("12", correct = TRUE),
+  answer("10"),
+  answer("11"),
+  answer("13"),
+  allow_retry = TRUE,
+  random_answer_order = TRUE
+)
+```
+
+Multi-step SES forecasts from $t=4$ are **flat**: all equal to $\ell_4$.
+
+## Beer patterns
+
+```{r beer-plot, exercise=TRUE, exercise.lines=6}
+beer |>
+  autoplot(Beer) +
+  labs(title = "Australian beer production", y = "megalitres")
+```
+
+```{r beer-season, exercise=TRUE, exercise.lines=5}
+beer |> gg_season(Beer) + labs(title = "Seasonal plot: Beer")
+```
+
+```{r q2}
+question(
+  lab_prompts[["q2"]],
+  answer("Additive (stable seasonal swings)", correct = TRUE),
+  answer("Multiplicative (swings grow with level)"),
+  answer("Neither — Beer has no seasonality"),
+  allow_retry = TRUE,
+  random_answer_order = TRUE
+)
+```
+
+## Fit automatic ETS
+
+```{r ets-fit, exercise=TRUE, exercise.lines=6}
+fit_auto <- beer |> model(ets = ETS(Beer))
+report(fit_auto)
+```
+
+```{r ets-fc, exercise=TRUE, exercise.lines=6}
+fit_auto <- beer |> model(ets = ETS(Beer))
+fit_auto |>
+  forecast(h = "3 years") |>
+  autoplot(beer, level = NULL)
+```
+
+```{r q3}
+question(
+  lab_prompts[["q3"]],
+  answer("(A, N, N)", correct = TRUE),
+  answer("(A, A, A)"),
+  answer("(A, A, N)"),
+  answer("(M, A, M)"),
+  allow_retry = TRUE,
+  random_answer_order = TRUE
+)
+```
+
+## AICc vs hold-out
+
+Compare candidates on the **same** Beer series. Sort by AICc, then check a hold-out.
+
+```{r aicc-ex, exercise=TRUE, exercise.lines=14}
+fit_cmp <- beer |>
+  model(
+    snaive = SNAIVE(Beer),
+    ses = ETS(Beer ~ error("A") + trend("N") + season("N")),
+    hw = ETS(Beer ~ error("A") + trend("A") + season("A")),
+    auto = ETS(Beer)
+  )
+glance(fit_cmp) |> arrange(AICc)
+```
+
+```{r holdout-ex, exercise=TRUE, exercise.lines=14}
+train <- beer |> filter_index(. ~ "2007 Q4")
+test <- beer |> filter_index("2008 Q1" ~ .)
+fit_ho <- train |>
+  model(
+    snaive = SNAIVE(Beer),
+    ses = ETS(Beer ~ error("A") + trend("N") + season("N")),
+    auto = ETS(Beer)
+  )
+fc <- fit_ho |> forecast(h = nrow(test))
+accuracy(fc, beer) |> arrange(RMSE)
+```
+
+```{r q4}
+question(
+  lab_prompts[["q4"]],
+  answer("AICc is not a universal score across model families; use hold-out / TS CV to compare ETS vs ARIMA.", correct = TRUE),
+  answer("AICc is only defined for seasonal naïve."),
+  answer("Lower AICc always means better forecasts on every test set."),
+  allow_retry = TRUE,
+  random_answer_order = TRUE
+)
+```
+
+## Residuals (optional check)
+
+```{r resid-ex, exercise=TRUE, exercise.lines=4}
+beer |> model(ETS(Beer)) |> gg_tsresiduals()
+```
+
+Look for leftover seasonal spikes in the residual ACF.
+
+## Recommendation
+
+```{r q5}
+question_text(
+  lab_prompts[["q5"]],
+  open_answer(),
+  placeholder = "e.g. seasonal ETS / SNAIVE because … hold-out RMSE … residuals …",
+  trim = TRUE
+)
+```
+
+## Submit
+
+Answer the questions above first, type your name, download the `.txt`, and upload it.
+
+```{r submit-ui, echo=FALSE}
+shiny::textInput("student_name", "Your name", placeholder = "Name Surname")
+shiny::downloadButton("download_txt", "Download submission .txt")
+```
+
+```{r submit-server, context="server"}
+output$download_txt <- shiny::downloadHandler(
+  filename = function() lab_submission_filename(input$student_name, lab_meta$id),
+  content = function(file) {
+    write_lab_submission(
+      path = file,
+      name = input$student_name,
+      lab_id = lab_meta$id,
+      lab_title = lab_meta$title,
+      state = learnr::get_tutorial_state(),
+      prompts = lab_prompts
+    )
+  }
+)
+```

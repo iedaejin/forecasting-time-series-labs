@@ -16,7 +16,7 @@ knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
 ```
 
 > **Slides vs lab.** Lecture slides emphasise theory, figures, and hand calculations.  
-> This lab is where you **type and run** the tidy `fable` workflow (and check the toy arithmetic).
+> This file is the **knit HTML** walkthrough. Prefer the interactive learnr lab: open `tutorial.Rmd` and click **Run Document**.
 
 # Packages
 
