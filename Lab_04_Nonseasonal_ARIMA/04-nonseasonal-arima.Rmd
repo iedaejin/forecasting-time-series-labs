@@ -52,7 +52,12 @@ Check $t=5$: $\widehat{\nabla y}_5 = 1.7$, $\hat y_5 = 15.7$.
 # Spain GDP
 
 ```{r}
-spain <- global_economy |> filter(Country == "Spain")
+# Drop Country key so residual plots see a single series (avoids
+# gg_tsresiduals / ACF "all times contain an NA" with leftover keys).
+spain <- global_economy |>
+  filter(Country == "Spain") |>
+  select(Year, GDP)
+
 spain |> autoplot(GDP) + scale_y_log10() +
   labs(title = "Spain GDP (log scale)", y = "GDP")
 
@@ -86,7 +91,9 @@ fc |> autoplot(spain, level = NULL) +
 # Residuals
 
 ```{r}
-fit |> select(arima_auto) |> gg_tsresiduals()
+fit |>
+  select(arima_auto) |>
+  gg_tsresiduals()
 ```
 
 # Your turn
