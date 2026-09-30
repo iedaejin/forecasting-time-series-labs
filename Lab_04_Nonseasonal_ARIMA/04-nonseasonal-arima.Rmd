@@ -31,38 +31,41 @@ Levels $y = (10, 12, 11, 14, 13)$.
 
 ```{r}
 y <- c(10, 12, 11, 14, 13)
-dy <- diff(y)
+dy <- diff(y)                 # length 4: t = 2..5
 phi <- 0.5
 c0 <- 0.2
-# one-step predictions of differences for t = 3,4,5 (indices 2,3,4 of dy)
-pred_dy <- c0 + phi * dplyr::lag(dy)
-level_fcast <- y[-length(y)] + pred_dy
+# Predictions of the difference use the *previous* difference:
+# for dy[t], use dy[t-1] (skip the first difference — no lag yet).
+pred_dy <- c(NA_real_, c0 + phi * dy[-length(dy)])
 tibble::tibble(
   t = 2:5,
   dy = dy,
   pred_dy = pred_dy,
   y_prev = y[-length(y)],
-  yhat = level_fcast,
+  yhat = y[-length(y)] + pred_dy,
   y = y[-1]
 )
 ```
 
-Check $t=5$: $\widehat{\nabla y}_5 = 1.7$, $\hat y_5 = 15.7$.
+Check $t=5$: $\widehat{\nabla y}_5 = 0.2 + 0.5\times 3 = 1.7$, so $\hat y_5 = 14 + 1.7 = 15.7$.
 
 # Spain GDP
 
 ```{r}
-# Drop Country key so residual plots see a single series (avoids
-# gg_tsresiduals / ACF "all times contain an NA" with leftover keys).
+# Keep a single-series tsibble (Year index only). Leaving `Country` as a key
+# breaks some residual helpers on common Posit Cloud package stacks.
 spain <- global_economy |>
   filter(Country == "Spain") |>
   select(Year, GDP)
 
-spain |> autoplot(GDP) + scale_y_log10() +
+spain |>
+  autoplot(GDP) +
+  scale_y_log10() +
   labs(title = "Spain GDP (log scale)", y = "GDP")
 
 spain |>
   mutate(g = difference(log(GDP))) |>
+  filter(!is.na(g)) |>
   autoplot(g) +
   labs(title = "Growth rates: diff log(GDP)", y = NULL)
 ```
@@ -82,22 +85,26 @@ fit <- train |>
 
 glance(fit) |> arrange(AICc)
 fc <- fit |> forecast(h = nrow(test))
-# Evaluate against the full series (fable convention used on the slides)
 accuracy(fc, spain) |> arrange(RMSE)
-fc |> autoplot(spain, level = NULL) +
+fc |>
+  autoplot(spain, level = NULL) +
   labs(title = "Spain GDP forecasts (trained <= 2010)")
 ```
 
 # Residuals
 
+Use innovations from `augment()` (more reliable than `gg_tsresiduals()` across package versions):
+
 ```{r}
 fit |>
-  select(arima_auto) |>
-  gg_tsresiduals()
+  augment() |>
+  filter(.model == "arima_auto", !is.na(.innov)) |>
+  gg_tsdisplay(.innov, plot_type = "histogram") +
+  labs(title = "ARIMA auto — innovation residuals")
 ```
 
 # Your turn
 
-1. Repeat for another country in `global_economy`.
+1. Repeat for another country in `global_economy` (filter, then `select(Year, GDP)`).
 2. Force $d=0$ vs $d=1$ and compare residual ACF + test RMSE.
 3. Write 3 sentences recommending a model to a policy analyst.
