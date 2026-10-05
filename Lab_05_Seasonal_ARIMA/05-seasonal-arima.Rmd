@@ -86,16 +86,54 @@ fc |> autoplot(beer, level = NULL) +
 ```
 
 ```{r}
-# Clean tsibble of innovations — reliable on Posit Cloud (avoid gg_tsdisplay on augmented mables).
-innov <- fit |>
-  augment() |>
-  filter(.model == "sarima", !is.na(.innov)) |>
-  as_tibble() |>
-  select(Quarter, .innov) |>
-  as_tsibble(index = Quarter)
+# Posit Cloud: augment() + feasts::ACF() gets an empty series for this SARIMA.
+# Use stored innovations when present; otherwise refit the same orders with stats::arima.
+m <- fit[["sarima"]][[1]]
+e <- numeric(0)
+est <- tryCatch(m$fit$est, error = function(err) NULL)
+if (!is.null(est) && ".resid" %in% names(est)) e <- as.numeric(est$.resid)
+e <- e[is.finite(e)]
 
-autoplot(innov, .innov) + labs(title = "Auto SARIMA — innovation residuals", y = NULL)
-innov |> ACF(.innov) |> autoplot() + labs(title = "ACF of innovations")
+if (length(e) < 2) {
+  y <- train$Beer
+  y <- y[is.finite(y)]
+  sp <- tryCatch(as.data.frame(m$fit$spec), error = function(err) NULL)
+  p <- if (!is.null(sp) && "p" %in% names(sp)) sp$p[[1]] else 0
+  d <- if (!is.null(sp) && "d" %in% names(sp)) sp$d[[1]] else 1
+  q <- if (!is.null(sp) && "q" %in% names(sp)) sp$q[[1]] else 1
+  P <- if (!is.null(sp) && "P" %in% names(sp)) sp$P[[1]] else 0
+  D <- if (!is.null(sp) && "D" %in% names(sp)) sp$D[[1]] else 1
+  Q <- if (!is.null(sp) && "Q" %in% names(sp)) sp$Q[[1]] else 1
+  per <- if (!is.null(sp) && "period" %in% names(sp)) sp$period[[1]] else 4
+  fit_s <- stats::arima(
+    y,
+    order = c(p, d, q),
+    seasonal = list(order = c(P, D, Q), period = per)
+  )
+  e <- as.numeric(stats::residuals(fit_s))
+  e <- e[is.finite(e)]
+}
+
+qtr <- tail(train$Quarter, length(e))
+innov <- tibble::tibble(Quarter = qtr, e = e)
+
+ggplot(innov, aes(Quarter, e)) +
+  geom_hline(yintercept = 0, colour = "grey70") +
+  geom_line() +
+  labs(title = "Auto SARIMA — innovation residuals", y = NULL)
+
+acf_obj <- stats::acf(innov$e, plot = FALSE)
+acf_df <- tibble::tibble(
+  lag = as.numeric(acf_obj$lag),
+  acf = as.numeric(acf_obj$acf)
+)
+acf_df <- acf_df[acf_df$lag > 0, ]
+band <- 2 / sqrt(length(innov$e))
+ggplot(acf_df, aes(lag, acf)) +
+  geom_hline(yintercept = c(-band, 0, band), linetype = c(2, 1, 2), colour = "steelblue") +
+  geom_col(width = 0.25) +
+  labs(title = "ACF of innovations", x = "lag", y = "acf")
+
 report(fit |> select(airline))
 ```
 
