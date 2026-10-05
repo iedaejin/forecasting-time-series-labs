@@ -1,0 +1,99 @@
+---
+title: "Lab 13 — Prophet vs ARIMA"
+subtitle: "Forecasting for Time Series (PPLEDBA)"
+author: "Prof. Dae-Jin Lee (daelee@faculty.ie.edu)"
+output: learnr::tutorial
+runtime: shiny_prerendered
+---
+
+```{r setup, include=FALSE}
+library(learnr)
+library(fpp3)
+knitr::opts_chunk$set(
+  echo = FALSE, message = FALSE, warning = FALSE,
+  fig.width = 8, fig.height = 4
+)
+source("lab_submission.R")
+
+lab_meta <- list(id = "lab13", title = "Prophet vs ARIMA")
+lab_prompts <- c(
+  q1 = "Choose between Prophet, ETS, and ARIMA using:",
+  q2 = "If a flexible model cannot beat SNAIVE on the hold-out, you should:",
+  q3 = "Prophet is best thought of as:",
+  q4 = "Which Beer model would you recommend to a non-technical manager, and why?"
+)
+```
+
+## What you will do
+
+Bake-off rules. Prophet is optional and is not required to finish the questions.
+
+Open this file and click **Run Document**. Packages: `fpp3`, `learnr`.
+Exercise chunks run when you click Run Code. They are not knitted in one pass.
+
+```{r q1}
+question(
+  lab_prompts[["q1"]],
+  answer("Hold-out accuracy on the original scale, plus residual checks", correct = TRUE),
+  answer("Training AICc across all families"),
+  answer("Whichever model has more parameters"),
+  answer("The last model you fit"),
+  allow_retry = TRUE,
+  random_answer_order = TRUE
+)
+```
+```{r q2}
+question(
+  lab_prompts[["q2"]],
+  answer("Ship the simpler SNAIVE forecast", correct = TRUE),
+  answer("Add more harmonics until AICc falls"),
+  answer("Ignore the hold-out"),
+  answer("Difference twice"),
+  allow_retry = TRUE,
+  random_answer_order = TRUE
+)
+```
+```{r q3}
+question(
+  lab_prompts[["q3"]],
+  answer("A curve (trend + season + holidays) with its own fitting stack", correct = TRUE),
+  answer("A special case of ARIMA(0,1,1)"),
+  answer("A replacement for every ETS model"),
+  answer("A test for stationarity"),
+  allow_retry = TRUE,
+  random_answer_order = TRUE
+)
+```
+```{r q4}
+question_text(
+  lab_prompts[["q4"]],
+  open_answer(),
+  placeholder = "Name one model and one hold-out or residual reason.",
+  trim = TRUE
+)
+```
+
+## Submit
+
+Answer the questions above first, type your name, download the `.txt`, and upload it.
+
+```{r submit-ui, echo=FALSE}
+shiny::textInput("student_name", "Your name", placeholder = "Name Surname")
+shiny::downloadButton("download_txt", "Download submission .txt")
+```
+
+```{r submit-server, context="server"}
+output$download_txt <- shiny::downloadHandler(
+  filename = function() lab_submission_filename(input$student_name, lab_meta$id),
+  content = function(file) {
+    write_lab_submission(
+      path = file,
+      name = input$student_name,
+      lab_id = lab_meta$id,
+      lab_title = lab_meta$title,
+      state = learnr::get_tutorial_state(),
+      prompts = lab_prompts
+    )
+  }
+)
+```

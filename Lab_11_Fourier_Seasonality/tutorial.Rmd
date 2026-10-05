@@ -1,0 +1,99 @@
+---
+title: "Lab 11 — Fourier seasonality"
+subtitle: "Forecasting for Time Series (PPLEDBA)"
+author: "Prof. Dae-Jin Lee (daelee@faculty.ie.edu)"
+output: learnr::tutorial
+runtime: shiny_prerendered
+---
+
+```{r setup, include=FALSE}
+library(learnr)
+library(fpp3)
+knitr::opts_chunk$set(
+  echo = FALSE, message = FALSE, warning = FALSE,
+  fig.width = 8, fig.height = 4
+)
+source("lab_submission.R")
+
+lab_meta <- list(id = "lab11", title = "Fourier seasonality")
+lab_prompts <- c(
+  q1 = "For quarterly data, seasonal dummies use how many extra coefficients (one quarter omitted)?",
+  q2 = "Fourier K=1 for a quarterly series uses how many sine/cosine coefficients?",
+  q3 = "K = m/2 is special because it is:",
+  q4 = "For Beer, would you stop at K=1 or go to K=2? One sentence."
+)
+```
+
+## What you will do
+
+Compare dummy seasonality with a few Fourier harmonics.
+
+Open this file and click **Run Document**. Packages: `fpp3`, `learnr`.
+Exercise chunks run when you click Run Code. They are not knitted in one pass.
+
+```{r q1}
+question(
+  lab_prompts[["q1"]],
+  answer("3", correct = TRUE),
+  answer("4"),
+  answer("1"),
+  answer("12"),
+  allow_retry = TRUE,
+  random_answer_order = TRUE
+)
+```
+```{r q2}
+question(
+  lab_prompts[["q2"]],
+  answer("2", correct = TRUE),
+  answer("1"),
+  answer("4"),
+  answer("8"),
+  allow_retry = TRUE,
+  random_answer_order = TRUE
+)
+```
+```{r q3}
+question(
+  lab_prompts[["q3"]],
+  answer("The Nyquist frequency (one coefficient, not a pair)", correct = TRUE),
+  answer("The same as a random walk"),
+  answer("Always worse than K=1"),
+  answer("Only used for annual data"),
+  allow_retry = TRUE,
+  random_answer_order = TRUE
+)
+```
+```{r q4}
+question_text(
+  lab_prompts[["q4"]],
+  open_answer(),
+  placeholder = "Look at residual seasonality and AICc within the regression family.",
+  trim = TRUE
+)
+```
+
+## Submit
+
+Answer the questions above first, type your name, download the `.txt`, and upload it.
+
+```{r submit-ui, echo=FALSE}
+shiny::textInput("student_name", "Your name", placeholder = "Name Surname")
+shiny::downloadButton("download_txt", "Download submission .txt")
+```
+
+```{r submit-server, context="server"}
+output$download_txt <- shiny::downloadHandler(
+  filename = function() lab_submission_filename(input$student_name, lab_meta$id),
+  content = function(file) {
+    write_lab_submission(
+      path = file,
+      name = input$student_name,
+      lab_id = lab_meta$id,
+      lab_title = lab_meta$title,
+      state = learnr::get_tutorial_state(),
+      prompts = lab_prompts
+    )
+  }
+)
+```

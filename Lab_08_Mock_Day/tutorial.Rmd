@@ -1,0 +1,99 @@
+---
+title: "Lab 08 — Mock day"
+subtitle: "Forecasting for Time Series (PPLEDBA)"
+author: "Prof. Dae-Jin Lee (daelee@faculty.ie.edu)"
+output: learnr::tutorial
+runtime: shiny_prerendered
+---
+
+```{r setup, include=FALSE}
+library(learnr)
+library(fpp3)
+knitr::opts_chunk$set(
+  echo = FALSE, message = FALSE, warning = FALSE,
+  fig.width = 8, fig.height = 4
+)
+source("lab_submission.R")
+
+lab_meta <- list(id = "lab08", title = "Mock day")
+lab_prompts <- c(
+  q1 = "report() on an ETS fit is used to read:",
+  q2 = "accuracy() should be compared:",
+  q3 = "A residual ACF spike at the seasonal lag means:",
+  q4 = "In two sentences, how would you write a Section C answer (model name, one plot clue, one residual note, the scale)?"
+)
+```
+
+## What you will do
+
+Recall what Section C of the midterm asks you to read.
+
+Open this file and click **Run Document**. Packages: `fpp3`, `learnr`.
+Exercise chunks run when you click Run Code. They are not knitted in one pass.
+
+```{r q1}
+question(
+  lab_prompts[["q1"]],
+  answer("Error, trend, and season letters, plus smoothing parameters", correct = TRUE),
+  answer("Only the AICc number"),
+  answer("The future regressor path"),
+  answer("A Prophet holiday list"),
+  allow_retry = TRUE,
+  random_answer_order = TRUE
+)
+```
+```{r q2}
+question(
+  lab_prompts[["q2"]],
+  answer("On the same hold-out and the original scale, against a naive baseline", correct = TRUE),
+  answer("Using training AICc only"),
+  answer("On the log scale even if the question asks for GDP"),
+  answer("Only for the model you like"),
+  allow_retry = TRUE,
+  random_answer_order = TRUE
+)
+```
+```{r q3}
+question(
+  lab_prompts[["q3"]],
+  answer("Seasonality is still missing", correct = TRUE),
+  answer("The model is white noise"),
+  answer("You should set p equal to that lag"),
+  answer("The mean is wrong but the dynamics are fine"),
+  allow_retry = TRUE,
+  random_answer_order = TRUE
+)
+```
+```{r q4}
+question_text(
+  lab_prompts[["q4"]],
+  open_answer(),
+  placeholder = "Name the class, cite one feature, one residual comment, state the scale.",
+  trim = TRUE
+)
+```
+
+## Submit
+
+Answer the questions above first, type your name, download the `.txt`, and upload it.
+
+```{r submit-ui, echo=FALSE}
+shiny::textInput("student_name", "Your name", placeholder = "Name Surname")
+shiny::downloadButton("download_txt", "Download submission .txt")
+```
+
+```{r submit-server, context="server"}
+output$download_txt <- shiny::downloadHandler(
+  filename = function() lab_submission_filename(input$student_name, lab_meta$id),
+  content = function(file) {
+    write_lab_submission(
+      path = file,
+      name = input$student_name,
+      lab_id = lab_meta$id,
+      lab_title = lab_meta$title,
+      state = learnr::get_tutorial_state(),
+      prompts = lab_prompts
+    )
+  }
+)
+```

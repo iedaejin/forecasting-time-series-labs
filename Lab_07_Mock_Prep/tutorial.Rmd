@@ -1,0 +1,99 @@
+---
+title: "Lab 07 — Midterm prep"
+subtitle: "Forecasting for Time Series (PPLEDBA)"
+author: "Prof. Dae-Jin Lee (daelee@faculty.ie.edu)"
+output: learnr::tutorial
+runtime: shiny_prerendered
+---
+
+```{r setup, include=FALSE}
+library(learnr)
+library(fpp3)
+knitr::opts_chunk$set(
+  echo = FALSE, message = FALSE, warning = FALSE,
+  fig.width = 8, fig.height = 4
+)
+source("lab_submission.R")
+
+lab_meta <- list(id = "lab07", title = "Midterm prep")
+lab_prompts <- c(
+  q1 = "A large negative ACF spike at lag 1 after an extra difference usually means:",
+  q2 = "Across ETS vs ARIMA, the course rule is:",
+  q3 = "Over-differencing is something you should:",
+  q4 = "Name one midterm trap you will watch for, and how you will avoid it."
+)
+```
+
+## What you will do
+
+Short exam-style checks. No new models.
+
+Open this file and click **Run Document**. Packages: `fpp3`, `learnr`.
+Exercise chunks run when you click Run Code. They are not knitted in one pass.
+
+```{r q1}
+question(
+  lab_prompts[["q1"]],
+  answer("Over-differencing", correct = TRUE),
+  answer("Need d=2"),
+  answer("Perfect white noise"),
+  answer("Seasonal AR of order 12"),
+  allow_retry = TRUE,
+  random_answer_order = TRUE
+)
+```
+```{r q2}
+question(
+  lab_prompts[["q2"]],
+  answer("Use hold-out accuracy and residuals, not raw AICc", correct = TRUE),
+  answer("Always pick the lower AICc"),
+  answer("Always pick ARIMA"),
+  answer("Ignore residuals if the point forecast looks smooth"),
+  allow_retry = TRUE,
+  random_answer_order = TRUE
+)
+```
+```{r q3}
+question(
+  lab_prompts[["q3"]],
+  answer("Avoid once plots and the ACF already look stationary", correct = TRUE),
+  answer("Always do, to be safe"),
+  answer("Apply only to white noise"),
+  answer("Use instead of a log transform"),
+  allow_retry = TRUE,
+  random_answer_order = TRUE
+)
+```
+```{r q4}
+question_text(
+  lab_prompts[["q4"]],
+  open_answer(),
+  placeholder = "e.g. accuracy left on the log scale.",
+  trim = TRUE
+)
+```
+
+## Submit
+
+Answer the questions above first, type your name, download the `.txt`, and upload it.
+
+```{r submit-ui, echo=FALSE}
+shiny::textInput("student_name", "Your name", placeholder = "Name Surname")
+shiny::downloadButton("download_txt", "Download submission .txt")
+```
+
+```{r submit-server, context="server"}
+output$download_txt <- shiny::downloadHandler(
+  filename = function() lab_submission_filename(input$student_name, lab_meta$id),
+  content = function(file) {
+    write_lab_submission(
+      path = file,
+      name = input$student_name,
+      lab_id = lab_meta$id,
+      lab_title = lab_meta$title,
+      state = learnr::get_tutorial_state(),
+      prompts = lab_prompts
+    )
+  }
+)
+```

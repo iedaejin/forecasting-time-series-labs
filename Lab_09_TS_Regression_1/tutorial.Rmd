@@ -1,0 +1,107 @@
+---
+title: "Lab 09 — Time series regression 1"
+subtitle: "Forecasting for Time Series (PPLEDBA)"
+author: "Prof. Dae-Jin Lee (daelee@faculty.ie.edu)"
+output: learnr::tutorial
+runtime: shiny_prerendered
+---
+
+```{r setup, include=FALSE}
+library(learnr)
+library(fpp3)
+knitr::opts_chunk$set(
+  echo = FALSE, message = FALSE, warning = FALSE,
+  fig.width = 8, fig.height = 4
+)
+source("lab_submission.R")
+
+lab_meta <- list(id = "lab09", title = "Time series regression 1")
+lab_prompts <- c(
+  q1 = "A TSLM with trend() and season() models:",
+  q2 = "The omitted quarter in the seasonal dummies is:",
+  q3 = "If residual ACF still spikes every 4 quarters, the regression:",
+  q4 = "Did trend+season beat SNAIVE on your hold-out? One sentence, name the metric."
+)
+```
+
+## What you will do
+
+Trend plus seasonal dummies for Beer. Run the fit in an exercise chunk.
+
+Open this file and click **Run Document**. Packages: `fpp3`, `learnr`.
+Exercise chunks run when you click Run Code. They are not knitted in one pass.
+
+
+```{r tslm-ex, exercise=TRUE, exercise.lines=12}
+beer <- aus_production |> filter(!is.na(Beer))
+train <- beer |> filter_index(. ~ "2007 Q4")
+fit <- train |> model(tslm = TSLM(Beer ~ trend() + season()))
+report(fit)
+```
+
+```{r q1}
+question(
+  lab_prompts[["q1"]],
+  answer("A deterministic trend and quarterly seasonal means", correct = TRUE),
+  answer("An ARIMA airline model"),
+  answer("A random walk with drift only"),
+  answer("Multiplicative Holt-Winters"),
+  allow_retry = TRUE,
+  random_answer_order = TRUE
+)
+```
+```{r q2}
+question(
+  lab_prompts[["q2"]],
+  answer("The baseline season; other quarters are differences from it", correct = TRUE),
+  answer("Always Q4, and it is dropped from the data"),
+  answer("The trend slope"),
+  answer("The error variance"),
+  allow_retry = TRUE,
+  random_answer_order = TRUE
+)
+```
+```{r q3}
+question(
+  lab_prompts[["q3"]],
+  answer("Has not absorbed the seasonal dynamics", correct = TRUE),
+  answer("Is certainly the best forecast"),
+  answer("Should be differenced twice"),
+  answer("Has no intercept"),
+  allow_retry = TRUE,
+  random_answer_order = TRUE
+)
+```
+```{r q4}
+question_text(
+  lab_prompts[["q4"]],
+  open_answer(),
+  placeholder = "RMSE or MAPE on the test quarters, versus SNAIVE.",
+  trim = TRUE
+)
+```
+
+## Submit
+
+Answer the questions above first, type your name, download the `.txt`, and upload it.
+
+```{r submit-ui, echo=FALSE}
+shiny::textInput("student_name", "Your name", placeholder = "Name Surname")
+shiny::downloadButton("download_txt", "Download submission .txt")
+```
+
+```{r submit-server, context="server"}
+output$download_txt <- shiny::downloadHandler(
+  filename = function() lab_submission_filename(input$student_name, lab_meta$id),
+  content = function(file) {
+    write_lab_submission(
+      path = file,
+      name = input$student_name,
+      lab_id = lab_meta$id,
+      lab_title = lab_meta$title,
+      state = learnr::get_tutorial_state(),
+      prompts = lab_prompts
+    )
+  }
+)
+```

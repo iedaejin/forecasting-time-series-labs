@@ -1,0 +1,109 @@
+---
+title: "Lab 02 — Stationarity and differencing"
+subtitle: "Forecasting for Time Series (PPLEDBA)"
+author: "Prof. Dae-Jin Lee (daelee@faculty.ie.edu)"
+output: learnr::tutorial
+runtime: shiny_prerendered
+---
+
+```{r setup, include=FALSE}
+library(learnr)
+library(fpp3)
+knitr::opts_chunk$set(
+  echo = FALSE, message = FALSE, warning = FALSE,
+  fig.width = 8, fig.height = 4
+)
+source("lab_submission.R")
+
+lab_meta <- list(id = "lab02", title = "Stationarity and differencing")
+lab_prompts <- c(
+  q1 = "Expand (1-B)^2 y_t.",
+  q2 = "A very slow ACF decay in levels usually means:",
+  q3 = "For Beer, (1-B)(1-B^4) at 1993 Q2 (421, 433, 410, 443) equals:",
+  q4 = "In one sentence, when do you stop differencing?"
+)
+```
+
+## What you will do
+
+Expand differences and decide when a series looks stationary enough to stop.
+
+Open this file and click **Run Document**. Packages: `fpp3`, `learnr`.
+Exercise chunks run when you click Run Code. They are not knitted in one pass.
+
+```{r q1}
+question(
+  lab_prompts[["q1"]],
+  answer("y_t - 2 y_{t-1} + y_{t-2}", correct = TRUE),
+  answer("y_t - y_{t-1}"),
+  answer("y_t - y_{t-2}"),
+  answer("y_t - y_{t-1} - y_{t-4}"),
+  allow_retry = TRUE,
+  random_answer_order = TRUE
+)
+```
+```{r q2}
+question(
+  lab_prompts[["q2"]],
+  answer("Suspect nonstationarity (or very strong persistence)", correct = TRUE),
+  answer("The series is white noise"),
+  answer("You must set D=2"),
+  answer("The series is an MA(1)"),
+  allow_retry = TRUE,
+  random_answer_order = TRUE
+)
+```
+
+```{r beer-diff, exercise=TRUE, exercise.lines=10}
+beer <- aus_production |>
+  filter(!is.na(Beer), Quarter >= yearquarter("1992 Q1"),
+         Quarter <= yearquarter("1993 Q4")) |>
+  select(Quarter, Beer) |>
+  mutate(d14 = difference(difference(Beer, lag = 4)))
+beer
+```
+
+```{r q3}
+question(
+  lab_prompts[["q3"]],
+  answer("21", correct = TRUE),
+  answer("-21"),
+  answer("443"),
+  answer("0"),
+  allow_retry = TRUE,
+  random_answer_order = TRUE
+)
+```
+```{r q4}
+question_text(
+  lab_prompts[["q4"]],
+  open_answer(),
+  placeholder = "Plots and ACF look stationary; avoid a large negative lag-1 spike.",
+  trim = TRUE
+)
+```
+
+## Submit
+
+Answer the questions above first, type your name, download the `.txt`, and upload it.
+
+```{r submit-ui, echo=FALSE}
+shiny::textInput("student_name", "Your name", placeholder = "Name Surname")
+shiny::downloadButton("download_txt", "Download submission .txt")
+```
+
+```{r submit-server, context="server"}
+output$download_txt <- shiny::downloadHandler(
+  filename = function() lab_submission_filename(input$student_name, lab_meta$id),
+  content = function(file) {
+    write_lab_submission(
+      path = file,
+      name = input$student_name,
+      lab_id = lab_meta$id,
+      lab_title = lab_meta$title,
+      state = learnr::get_tutorial_state(),
+      prompts = lab_prompts
+    )
+  }
+)
+```

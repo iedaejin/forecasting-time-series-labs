@@ -1,0 +1,120 @@
+---
+title: "Lab 00 — TSA review"
+subtitle: "Forecasting for Time Series (PPLEDBA)"
+author: "Prof. Dae-Jin Lee (daelee@faculty.ie.edu)"
+output: learnr::tutorial
+runtime: shiny_prerendered
+---
+
+```{r setup, include=FALSE}
+library(learnr)
+library(fpp3)
+knitr::opts_chunk$set(
+  echo = FALSE, message = FALSE, warning = FALSE,
+  fig.width = 8, fig.height = 4
+)
+source("lab_submission.R")
+beer <- aus_production |> filter(!is.na(Beer)) |> select(Quarter, Beer)
+
+lab_meta <- list(id = "lab00", title = "TSA review")
+lab_prompts <- c(
+  q1 = "Seasonal naive (SNAIVE) sets the forecast equal to which past value?",
+  q2 = "An additive decomposition writes the series as which sum?",
+  q3 = "After the last SES update, multi-step forecasts are:",
+  q4 = "In one or two sentences, what pattern do you see in Australian beer production?"
+)
+```
+
+## What you will do
+
+Read graphics, keep a naive baseline, and check one SES step by hand.
+
+Open this file and click **Run Document**. Packages: `fpp3`, `learnr`.
+Exercise chunks run when you click Run Code. They are not knitted in one pass.
+
+## Graphics
+
+```{r beer-plot, exercise=TRUE, exercise.lines=8}
+beer |> autoplot(Beer) + labs(title = "Australian beer", y = "megalitres")
+beer |> gg_season(Beer)
+```
+
+```{r q1}
+question(
+  lab_prompts[["q1"]],
+  answer("The last observation from the same season", correct = TRUE),
+  answer("The sample mean"),
+  answer("A linear drift from the first observation"),
+  answer("The residual from STL"),
+  allow_retry = TRUE,
+  random_answer_order = TRUE
+)
+```
+```{r q2}
+question(
+  lab_prompts[["q2"]],
+  answer("Trend + seasonal + remainder", correct = TRUE),
+  answer("AR + MA + drift"),
+  answer("Level times season only"),
+  answer("White noise"),
+  allow_retry = TRUE,
+  random_answer_order = TRUE
+)
+```
+
+## SES hand check
+
+$y=(10,12,11)$, $\alpha=0.5$, $\ell_0=10$.
+
+```{r ses-ex, exercise=TRUE, exercise.lines=8}
+y <- c(10, 12, 11)
+alpha <- 0.5
+ell <- 10
+for (t in seq_along(y)) ell <- alpha * y[t] + (1 - alpha) * ell
+ell
+```
+
+```{r q3}
+question(
+  lab_prompts[["q3"]],
+  answer("Flat (all equal to the last level)", correct = TRUE),
+  answer("Linear in h"),
+  answer("Seasonal"),
+  answer("Zero"),
+  allow_retry = TRUE,
+  random_answer_order = TRUE
+)
+```
+```{r q4}
+question_text(
+  lab_prompts[["q4"]],
+  open_answer(),
+  placeholder = "Trend? season? stable or growing swings?",
+  trim = TRUE
+)
+```
+
+## Submit
+
+Answer the questions above first, type your name, download the `.txt`, and upload it.
+
+```{r submit-ui, echo=FALSE}
+shiny::textInput("student_name", "Your name", placeholder = "Name Surname")
+shiny::downloadButton("download_txt", "Download submission .txt")
+```
+
+```{r submit-server, context="server"}
+output$download_txt <- shiny::downloadHandler(
+  filename = function() lab_submission_filename(input$student_name, lab_meta$id),
+  content = function(file) {
+    write_lab_submission(
+      path = file,
+      name = input$student_name,
+      lab_id = lab_meta$id,
+      lab_title = lab_meta$title,
+      state = learnr::get_tutorial_state(),
+      prompts = lab_prompts
+    )
+  }
+)
+```

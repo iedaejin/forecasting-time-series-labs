@@ -1,0 +1,109 @@
+---
+title: "Lab 04 — Nonseasonal ARIMA"
+subtitle: "Forecasting for Time Series (PPLEDBA)"
+author: "Prof. Dae-Jin Lee (daelee@faculty.ie.edu)"
+output: learnr::tutorial
+runtime: shiny_prerendered
+---
+
+```{r setup, include=FALSE}
+library(learnr)
+library(fpp3)
+knitr::opts_chunk$set(
+  echo = FALSE, message = FALSE, warning = FALSE,
+  fig.width = 8, fig.height = 4
+)
+source("lab_submission.R")
+
+lab_meta <- list(id = "lab04", title = "Nonseasonal ARIMA")
+lab_prompts <- c(
+  q1 = "ARIMA(1,1,0): c=0.2, phi=0.5, y_4=14, difference at t=4 is 3. One-step level forecast yhat_5 is:",
+  q2 = "When d=1, a nonzero constant c is:",
+  q3 = "SES / ETS(A,N,N) is the ARIMA cousin of:",
+  q4 = "In one or two sentences, what would you tell a policy analyst about Spain GDP forecasts (scale and baseline)?"
+)
+```
+
+## What you will do
+
+Finish the ARIMA(1,1,0) hand forecast and interpret drift vs mean.
+
+Open this file and click **Run Document**. Packages: `fpp3`, `learnr`.
+Exercise chunks run when you click Run Code. They are not knitted in one pass.
+
+
+```{r hand, exercise=TRUE, exercise.lines=6}
+c0 <- 0.2
+phi <- 0.5
+dy4 <- 3
+y4 <- 14
+dyhat <- c0 + phi * dy4
+y4 + dyhat
+```
+
+```{r q1}
+question(
+  lab_prompts[["q1"]],
+  answer("15.7", correct = TRUE),
+  answer("1.7"),
+  answer("14.2"),
+  answer("17"),
+  allow_retry = TRUE,
+  random_answer_order = TRUE
+)
+```
+```{r q2}
+question(
+  lab_prompts[["q2"]],
+  answer("A drift (average change per period)", correct = TRUE),
+  answer("The mean of the levels"),
+  answer("A seasonal intercept"),
+  answer("The MA coefficient"),
+  allow_retry = TRUE,
+  random_answer_order = TRUE
+)
+```
+```{r q3}
+question(
+  lab_prompts[["q3"]],
+  answer("(0,1,1)", correct = TRUE),
+  answer("(0,1,0)"),
+  answer("(1,0,0)"),
+  answer("(0,2,2)"),
+  allow_retry = TRUE,
+  random_answer_order = TRUE
+)
+```
+```{r q4}
+question_text(
+  lab_prompts[["q4"]],
+  open_answer(),
+  placeholder = "Log then difference; compare to RW-with-drift; accuracy on the GDP scale.",
+  trim = TRUE
+)
+```
+
+## Submit
+
+Answer the questions above first, type your name, download the `.txt`, and upload it.
+
+```{r submit-ui, echo=FALSE}
+shiny::textInput("student_name", "Your name", placeholder = "Name Surname")
+shiny::downloadButton("download_txt", "Download submission .txt")
+```
+
+```{r submit-server, context="server"}
+output$download_txt <- shiny::downloadHandler(
+  filename = function() lab_submission_filename(input$student_name, lab_meta$id),
+  content = function(file) {
+    write_lab_submission(
+      path = file,
+      name = input$student_name,
+      lab_id = lab_meta$id,
+      lab_title = lab_meta$title,
+      state = learnr::get_tutorial_state(),
+      prompts = lab_prompts
+    )
+  }
+)
+```
