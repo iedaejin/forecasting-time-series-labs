@@ -1,4 +1,4 @@
-# Lab 00 — TSA review
+# Lab 05 — Seasonal ARIMA
 
 Open `tutorial.Rmd` in this folder and click **Run Document**. Do not Knit `tutorial.Rmd`.
 

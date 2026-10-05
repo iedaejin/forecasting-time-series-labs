@@ -1,4 +1,4 @@
-# Lab 00 — TSA review
+# Lab 13 — Prophet vs ARIMA
 
 Open `tutorial.Rmd` in this folder and click **Run Document**. Do not Knit `tutorial.Rmd`.
 
@@ -30,5 +30,7 @@ Or use the **Run Document** button at the top of `tutorial.Rmd`.
 The file records your name, the date, and each answer.
 
 The other `.Rmd` in this folder is an optional longer notebook. The file to hand in from this tutorial is the `.txt`.
+
+Prophet is optional and is not required to finish `tutorial.Rmd`.
 
 **Faculty:** Prof. Dae-Jin Lee (`daelee@faculty.ie.edu`)
