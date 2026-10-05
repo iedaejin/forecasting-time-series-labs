@@ -93,32 +93,42 @@ fc |>
 
 # Residuals
 
-`residuals()` / `augment()` can yield an empty series for `ARIMA(log(GDP))` on some Posit Cloud stacks. Read the innovation residuals stored on the fitted model instead, and plot with ggplot (not `feasts::ACF`).
+On some Posit Cloud stacks the fable residual helpers return an empty series for `ARIMA(log(GDP))`, and `acf()` then crashes. Use stored innovations when they exist; otherwise refit the same orders with `stats::arima`.
 
 ```{r}
 m <- fit[["arima_auto"]][[1]]
-est <- m$fit$est
-if (!is.null(est) && ".resid" %in% names(est)) {
-  e <- est$.resid
-} else {
-  e <- as.numeric(stats::residuals(m$fit$model))
+e <- numeric(0)
+est <- tryCatch(m$fit$est, error = function(err) NULL)
+if (!is.null(est) && ".resid" %in% names(est)) e <- as.numeric(est$.resid)
+e <- e[is.finite(e)]
+
+if (length(e) < 2) {
+  z <- log(train$GDP)
+  z <- z[is.finite(z)]
+  sp <- tryCatch(as.data.frame(m$fit$spec), error = function(err) NULL)
+  p <- if (!is.null(sp) && "p" %in% names(sp)) sp$p[[1]] else 1
+  d <- if (!is.null(sp) && "d" %in% names(sp)) sp$d[[1]] else 1
+  q <- if (!is.null(sp) && "q" %in% names(sp)) sp$q[[1]] else 0
+  fit_s <- stats::arima(z, order = c(p, d, q), include.mean = TRUE)
+  e <- as.numeric(stats::residuals(fit_s))
+  e <- e[is.finite(e)]
 }
+
 year <- tail(train$Year, length(e))
 innov <- tibble::tibble(Year = year, e = e)
-innov <- innov[is.finite(innov$e), ]
 
 ggplot(innov, aes(Year, e)) +
   geom_hline(yintercept = 0, colour = "grey70") +
   geom_line() +
   labs(title = "ARIMA auto — innovation residuals", y = NULL)
 
-acf_obj <- stats::acf(innov$e, plot = FALSE, na.action = na.pass)
+acf_obj <- stats::acf(innov$e, plot = FALSE)
 acf_df <- tibble::tibble(
   lag = as.numeric(acf_obj$lag),
   acf = as.numeric(acf_obj$acf)
 )
 acf_df <- acf_df[acf_df$lag > 0, ]
-band <- 2 / sqrt(nrow(innov))
+band <- 2 / sqrt(length(innov$e))
 ggplot(acf_df, aes(lag, acf)) +
   geom_hline(yintercept = c(-band, 0, band), linetype = c(2, 1, 2), colour = "steelblue") +
   geom_col(width = 0.25) +
