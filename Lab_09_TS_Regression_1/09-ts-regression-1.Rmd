@@ -77,7 +77,11 @@ glance(fit) |> arrange(AICc)
 ```
 
 ```{r}
-fit |> select(tslm) |> gg_tsresiduals()
+fit |>
+  augment() |>
+  filter(.model == "tslm", !is.na(.innov)) |>
+  gg_tsdisplay(.innov, plot_type = "histogram") +
+  labs(title = "TSLM — innovation residuals")
 ```
 
 ```{r}

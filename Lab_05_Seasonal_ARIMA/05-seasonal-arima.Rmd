@@ -86,7 +86,13 @@ fc |> autoplot(beer, level = NULL) +
 ```
 
 ```{r}
-fit |> select(sarima) |> gg_tsresiduals()
+# Innovations via augment() — more reliable than gg_tsresiduals() on Posit Cloud
+# (seasonal differencing / package versions can leave NAs that break ACF).
+fit |>
+  augment() |>
+  filter(.model == "sarima", !is.na(.innov)) |>
+  gg_tsdisplay(.innov, plot_type = "histogram") +
+  labs(title = "Auto SARIMA — innovation residuals")
 report(fit |> select(airline))
 ```
 

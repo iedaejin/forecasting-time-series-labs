@@ -95,7 +95,11 @@ fit |> forecast(h = "3 years") |> autoplot(beer, level = NULL) +
 # Residual seasonality check
 
 ```{r}
-fit |> select(f1) |> gg_tsresiduals()
+fit |>
+  augment() |>
+  filter(.model == "f1", !is.na(.innov)) |>
+  gg_tsdisplay(.innov, plot_type = "histogram") +
+  labs(title = "Fourier K=1 — innovation residuals")
 ```
 
 # Weekly-style discussion

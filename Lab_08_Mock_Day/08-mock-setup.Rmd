@@ -83,8 +83,10 @@ series/numbers.)
 
 ```{r}
 fit_c2 |>
-  select(arima) |>
-  gg_tsresiduals()
+  augment() |>
+  filter(.model == "arima", !is.na(.innov)) |>
+  gg_tsdisplay(.innov, plot_type = "histogram") +
+  labs(title = "ARIMA — innovation residuals")
 
 augment(fit_c2) |>
   filter(.model == "arima") |>

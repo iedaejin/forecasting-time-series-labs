@@ -155,8 +155,12 @@ question(
 
 ## Residuals (optional check)
 
-```{r resid-ex, exercise=TRUE, exercise.lines=4}
-beer |> model(ETS(Beer)) |> gg_tsresiduals()
+```{r resid-ex, exercise=TRUE, exercise.lines=8}
+beer |>
+  model(ETS(Beer)) |>
+  augment() |>
+  filter(!is.na(.innov)) |>
+  gg_tsdisplay(.innov, plot_type = "histogram")
 ```
 
 Look for leftover seasonal spikes in the residual ACF.

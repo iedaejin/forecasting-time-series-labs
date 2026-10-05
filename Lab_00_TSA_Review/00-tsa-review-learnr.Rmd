@@ -174,7 +174,11 @@ fit <- train |>
   )
 fc <- fit |> forecast(h = nrow(test))
 fc |> autoplot(beer, level = NULL)
-fit |> select(snaive) |> gg_tsresiduals()
+fit |>
+  augment() |>
+  filter(.model == "snaive", !is.na(.innov)) |>
+  gg_tsdisplay(.innov, plot_type = "histogram") +
+  labs(title = "SNAIVE — innovation residuals")
 ```
 
 ```{r bench-plots-check}

@@ -149,7 +149,12 @@ fc |> autoplot(beer, level = NULL)
 # Residuals
 
 ```{r}
-fit_auto |> gg_tsresiduals()
+# augment() + gg_tsdisplay is more reliable than gg_tsresiduals() on Posit Cloud
+fit_auto |>
+  augment() |>
+  filter(!is.na(.innov)) |>
+  gg_tsdisplay(.innov, plot_type = "histogram") +
+  labs(title = "ETS auto — innovation residuals")
 ```
 
 # Stretch: employment SES vs Holt

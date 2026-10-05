@@ -57,7 +57,11 @@ us_change |> autoplot(Consumption) + labs(title = "US consumption growth")
 
 ```{r}
 report(fit |> select(lm2))
-fit |> select(lm2) |> gg_tsresiduals()
+fit |>
+  augment() |>
+  filter(.model == "lm2", !is.na(.innov)) |>
+  gg_tsdisplay(.innov, plot_type = "histogram") +
+  labs(title = "lm2 — innovation residuals")
 ```
 
 # Scenario forecasts: Income +/-1% for the next 8 quarters
