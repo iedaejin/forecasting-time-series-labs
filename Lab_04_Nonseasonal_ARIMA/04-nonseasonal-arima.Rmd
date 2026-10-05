@@ -93,14 +93,18 @@ fc |>
 
 # Residuals
 
-Use innovations from `augment()` (more reliable than `gg_tsresiduals()` across package versions):
+Use innovations from `augment()` on a clean single-series tsibble (reliable on Posit Cloud):
 
 ```{r}
-fit |>
+innov <- fit |>
   augment() |>
   filter(.model == "arima_auto", !is.na(.innov)) |>
-  gg_tsdisplay(.innov, plot_type = "histogram") +
-  labs(title = "ARIMA auto — innovation residuals")
+  as_tibble() |>
+  select(Year, .innov) |>
+  as_tsibble(index = Year)
+
+autoplot(innov, .innov) + labs(title = "ARIMA auto — innovation residuals", y = NULL)
+innov |> ACF(.innov) |> autoplot() + labs(title = "ACF of innovations")
 ```
 
 # Your turn

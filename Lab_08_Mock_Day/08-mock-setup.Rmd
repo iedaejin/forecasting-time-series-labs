@@ -82,11 +82,15 @@ series/numbers.)
 # Recreating a residual-diagnostics check (like Section C3)
 
 ```{r}
-fit_c2 |>
+innov <- fit_c2 |>
   augment() |>
   filter(.model == "arima", !is.na(.innov)) |>
-  gg_tsdisplay(.innov, plot_type = "histogram") +
-  labs(title = "ARIMA — innovation residuals")
+  as_tibble() |>
+  select(Month, .innov) |>
+  as_tsibble(index = Month)
+
+autoplot(innov, .innov) + labs(title = "ARIMA — innovation residuals", y = NULL)
+innov |> ACF(.innov) |> autoplot() + labs(title = "ACF of innovations")
 
 augment(fit_c2) |>
   filter(.model == "arima") |>

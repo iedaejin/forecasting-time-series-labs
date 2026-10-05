@@ -86,13 +86,16 @@ fc |> autoplot(beer, level = NULL) +
 ```
 
 ```{r}
-# Innovations via augment() — more reliable than gg_tsresiduals() on Posit Cloud
-# (seasonal differencing / package versions can leave NAs that break ACF).
-fit |>
+# Clean tsibble of innovations — reliable on Posit Cloud (avoid gg_tsdisplay on augmented mables).
+innov <- fit |>
   augment() |>
   filter(.model == "sarima", !is.na(.innov)) |>
-  gg_tsdisplay(.innov, plot_type = "histogram") +
-  labs(title = "Auto SARIMA — innovation residuals")
+  as_tibble() |>
+  select(Quarter, .innov) |>
+  as_tsibble(index = Quarter)
+
+autoplot(innov, .innov) + labs(title = "Auto SARIMA — innovation residuals", y = NULL)
+innov |> ACF(.innov) |> autoplot() + labs(title = "ACF of innovations")
 report(fit |> select(airline))
 ```
 

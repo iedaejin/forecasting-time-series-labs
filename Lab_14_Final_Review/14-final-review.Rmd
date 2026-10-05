@@ -50,11 +50,15 @@ fc |> autoplot(beer, level = NULL) +
 
 ```{r}
 best <- accuracy(fc, beer) |> arrange(RMSE) |> slice(1) |> pull(.model)
-fit |>
+innov <- fit |>
   augment() |>
   filter(.model == best, !is.na(.innov)) |>
-  gg_tsdisplay(.innov, plot_type = "histogram") +
-  labs(title = paste0(best, " — innovation residuals"))
+  as_tibble() |>
+  select(Quarter, .innov) |>
+  as_tsibble(index = Quarter)
+
+autoplot(innov, .innov) + labs(title = paste0(best, " — innovation residuals"), y = NULL)
+innov |> ACF(.innov) |> autoplot() + labs(title = "ACF of innovations")
 ```
 # Hand reminder: combined difference (Session 2)
 

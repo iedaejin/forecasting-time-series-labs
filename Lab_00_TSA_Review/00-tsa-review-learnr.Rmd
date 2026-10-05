@@ -174,11 +174,15 @@ fit <- train |>
   )
 fc <- fit |> forecast(h = nrow(test))
 fc |> autoplot(beer, level = NULL)
-fit |>
+innov <- fit |>
   augment() |>
   filter(.model == "snaive", !is.na(.innov)) |>
-  gg_tsdisplay(.innov, plot_type = "histogram") +
-  labs(title = "SNAIVE — innovation residuals")
+  as_tibble() |>
+  select(Quarter, .innov) |>
+  as_tsibble(index = Quarter)
+
+autoplot(innov, .innov) + labs(title = "SNAIVE — innovation residuals", y = NULL)
+innov |> ACF(.innov) |> autoplot() + labs(title = "ACF of innovations")
 ```
 
 ```{r bench-plots-check}

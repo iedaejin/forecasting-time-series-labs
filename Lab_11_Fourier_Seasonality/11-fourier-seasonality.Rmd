@@ -95,11 +95,15 @@ fit |> forecast(h = "3 years") |> autoplot(beer, level = NULL) +
 # Residual seasonality check
 
 ```{r}
-fit |>
+innov <- fit |>
   augment() |>
   filter(.model == "f1", !is.na(.innov)) |>
-  gg_tsdisplay(.innov, plot_type = "histogram") +
-  labs(title = "Fourier K=1 — innovation residuals")
+  as_tibble() |>
+  select(Quarter, .innov) |>
+  as_tsibble(index = Quarter)
+
+autoplot(innov, .innov) + labs(title = "Fourier K=1 — innovation residuals", y = NULL)
+innov |> ACF(.innov) |> autoplot() + labs(title = "ACF of innovations")
 ```
 
 # Weekly-style discussion
