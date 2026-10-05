@@ -13,6 +13,7 @@ output:
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
                       fig.width = 8, fig.height = 4.5)
+source("plot_innovations.R")
 ```
 
 > **Slides vs lab.** Lecture slides emphasise theory, figures, and hand calculations.
@@ -77,15 +78,13 @@ glance(fit) |> arrange(AICc)
 ```
 
 ```{r}
-innov <- fit |>
-  augment() |>
-  filter(.model == "tslm", !is.na(.innov)) |>
-  as_tibble() |>
-  select(Quarter, .innov) |>
-  as_tsibble(index = Quarter)
-
-autoplot(innov, .innov) + labs(title = "TSLM — innovation residuals", y = NULL)
-innov |> ACF(.innov) |> autoplot() + labs(title = "ACF of innovations")
+# Posit Cloud: feasts::ACF() stops if fable innovations come back empty.
+e <- lm_resid(
+  Beer ~ seq_along(Beer) + factor(quarter(Quarter)),
+  beer,
+  fit[["tslm"]][[1]]
+)
+plot_innovations(beer$Quarter, e, "TSLM — innovation residuals")
 ```
 
 ```{r}
@@ -114,6 +113,6 @@ fc_ho |> autoplot(beer, level = NULL) +
 
 # Your turn
 
-1. Add only `trend()` (no season) and compare residual seasonality with `gg_tsresiduals()`.
+1. Add only `trend()` (no season) and compare residual seasonality with `plot_innovations()` (same helper as above). `gg_tsresiduals()` fails on Posit Cloud when the innovation series is empty.
 2. Interpret the largest seasonal coefficient (`report()`) in one sentence, relative to the omitted quarter.
 3. From the hold-out table above, which model wins on RMSE? Does the winner match the in-sample AICc ranking?

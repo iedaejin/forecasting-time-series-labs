@@ -13,6 +13,7 @@ output:
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
                       fig.width = 8, fig.height = 4.5)
+source("plot_innovations.R")
 ```
 
 > **Slides vs lab.** Lecture slides emphasise theory, figures, and hand calculations.
@@ -95,15 +96,12 @@ fit |> forecast(h = "3 years") |> autoplot(beer, level = NULL) +
 # Residual seasonality check
 
 ```{r}
-innov <- fit |>
-  augment() |>
-  filter(.model == "f1", !is.na(.innov)) |>
-  as_tibble() |>
-  select(Quarter, .innov) |>
-  as_tsibble(index = Quarter)
-
-autoplot(innov, .innov) + labs(title = "Fourier K=1 — innovation residuals", y = NULL)
-innov |> ACF(.innov) |> autoplot() + labs(title = "ACF of innovations")
+# Posit Cloud: feasts::ACF() stops if fable innovations come back empty.
+t <- seq_along(beer$Beer)
+beer_f <- beer |>
+  mutate(t = t, s1 = sin(2 * pi * t / 4), c1 = cos(2 * pi * t / 4))
+e <- lm_resid(Beer ~ t + s1 + c1, beer_f, fit[["f1"]][[1]])
+plot_innovations(beer$Quarter, e, "Fourier K=1 — innovation residuals")
 ```
 
 # Weekly-style discussion
@@ -116,6 +114,6 @@ annual seasonality.
 # Your turn
 
 1. Compute the parameter-count table for $m=7$ (daily-of-week) and $m=365$ (daily-of-year).
-2. For Beer, does `f1` show more residual seasonality than `f2` in `gg_tsresiduals()`? Explain using the
+2. For Beer, does `f1` show more residual seasonality than `f2` in the residual ACF (`plot_innovations()`)? Explain using the
    parameter-count argument.
 3. At what $K$ would you stop increasing harmonics for a weekly series, and why (hint: AICc plateau)?

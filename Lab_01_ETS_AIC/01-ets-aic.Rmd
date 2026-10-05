@@ -13,6 +13,7 @@ output:
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
                       fig.width = 8, fig.height = 4.5)
+source("plot_innovations.R")
 ```
 
 > **Slides vs lab.** Lecture slides emphasise theory, figures, and hand calculations.  
@@ -149,15 +150,9 @@ fc |> autoplot(beer, level = NULL)
 # Residuals
 
 ```{r}
-innov <- fit_auto |>
-  augment() |>
-  filter(!is.na(.innov)) |>
-  as_tibble() |>
-  select(Quarter, .innov) |>
-  as_tsibble(index = Quarter)
-
-autoplot(innov, .innov) + labs(title = "ETS auto — innovation residuals", y = NULL)
-innov |> ACF(.innov) |> autoplot() + labs(title = "ACF of innovations")
+# Posit Cloud: feasts::ACF() stops if fable innovations come back empty.
+e <- ets_resid(beer$Beer, fit_auto[["ets"]][[1]], frequency = 4)
+plot_innovations(beer$Quarter, e, "ETS auto — innovation residuals")
 ```
 
 # Stretch: employment SES vs Holt

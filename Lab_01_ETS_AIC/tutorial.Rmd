@@ -14,6 +14,7 @@ knitr::opts_chunk$set(
   fig.width = 8, fig.height = 4
 )
 source("lab_submission.R")
+source("plot_innovations.R")
 
 beer <- aus_production |>
   filter(!is.na(Beer)) |>
@@ -156,16 +157,9 @@ question(
 ## Residuals (optional check)
 
 ```{r resid-ex, exercise=TRUE, exercise.lines=10}
-innov <- beer |>
-  model(ETS(Beer)) |>
-  augment() |>
-  filter(!is.na(.innov)) |>
-  as_tibble() |>
-  select(Quarter, .innov) |>
-  as_tsibble(index = Quarter)
-
-autoplot(innov, .innov) + labs(title = "ETS — innovation residuals", y = NULL)
-innov |> ACF(.innov) |> autoplot() + labs(title = "ACF of innovations")
+fit_ets <- beer |> model(ets = ETS(Beer))
+e <- ets_resid(beer$Beer, fit_ets[["ets"]][[1]], frequency = 4)
+plot_innovations(beer$Quarter, e, "ETS — innovation residuals")
 ```
 
 Look for leftover seasonal spikes in the residual ACF.

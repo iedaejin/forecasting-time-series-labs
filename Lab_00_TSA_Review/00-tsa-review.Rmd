@@ -13,6 +13,7 @@ output:
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
                       fig.width = 8, fig.height = 4.5)
+source("plot_innovations.R")
 ```
 
 > **Slides vs lab.** Slides review TSA concepts with figures.  
@@ -65,15 +66,10 @@ fit <- train |>
 fc <- fit |> forecast(h = nrow(test))
 accuracy(fc, beer) |> arrange(RMSE)
 fc |> autoplot(beer, level = NULL)
-innov <- fit |>
-  augment() |>
-  filter(.model == "snaive", !is.na(.innov)) |>
-  as_tibble() |>
-  select(Quarter, .innov) |>
-  as_tsibble(index = Quarter)
-
-autoplot(innov, .innov) + labs(title = "SNAIVE — innovation residuals", y = NULL)
-innov |> ACF(.innov) |> autoplot() + labs(title = "ACF of innovations")
+# Posit Cloud: feasts::ACF() stops if fable innovations come back empty.
+e <- stored_resid(fit[["snaive"]][[1]])
+if (length(e) < 2) e <- snaive_resid(train$Beer, 4)
+plot_innovations(train$Quarter, e, "SNAIVE — innovation residuals")
 ```
 
 # 4. SES mini hand-check (bridge to Session 1)

@@ -13,6 +13,7 @@ output:
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
                       fig.width = 8, fig.height = 4.5)
+source("plot_innovations.R")
 ```
 
 > **Slides vs lab.** Lecture slides emphasise theory, figures, and hand calculations.
@@ -57,15 +58,13 @@ us_change |> autoplot(Consumption) + labs(title = "US consumption growth")
 
 ```{r}
 report(fit |> select(lm2))
-innov <- fit |>
-  augment() |>
-  filter(.model == "lm2", !is.na(.innov)) |>
-  as_tibble() |>
-  select(Quarter, .innov) |>
-  as_tsibble(index = Quarter)
-
-autoplot(innov, .innov) + labs(title = "lm2 — innovation residuals", y = NULL)
-innov |> ACF(.innov) |> autoplot() + labs(title = "ACF of innovations")
+# Posit Cloud: feasts::ACF() stops if fable innovations come back empty.
+e <- lm_resid(
+  Consumption ~ Income + Savings + Unemployment,
+  us_change,
+  fit[["lm2"]][[1]]
+)
+plot_innovations(us_change$Quarter, e, "lm2 — innovation residuals")
 ```
 
 # Scenario forecasts: Income +/-1% for the next 8 quarters

@@ -24,6 +24,7 @@ knitr::opts_chunk$set(
   fig.height = 4.2
 )
 gradethis::gradethis_setup()
+source("plot_innovations.R")
 
 beer <- aus_production |>
   filter(!is.na(Beer)) |>
@@ -160,7 +161,7 @@ fit <- train |>
     drift = RW(Beer ~ drift())
   )
 fc <- fit |> forecast(h = nrow(test))
-# autoplot forecasts; gg_tsresiduals for snaive
+# autoplot forecasts, then plot SNAIVE residuals with plot_innovations()
 
 ```
 
@@ -174,15 +175,9 @@ fit <- train |>
   )
 fc <- fit |> forecast(h = nrow(test))
 fc |> autoplot(beer, level = NULL)
-innov <- fit |>
-  augment() |>
-  filter(.model == "snaive", !is.na(.innov)) |>
-  as_tibble() |>
-  select(Quarter, .innov) |>
-  as_tsibble(index = Quarter)
-
-autoplot(innov, .innov) + labs(title = "SNAIVE — innovation residuals", y = NULL)
-innov |> ACF(.innov) |> autoplot() + labs(title = "ACF of innovations")
+e <- stored_resid(fit[["snaive"]][[1]])
+if (length(e) < 2) e <- snaive_resid(train$Beer, 4)
+plot_innovations(train$Quarter, e, "SNAIVE — innovation residuals")
 ```
 
 ```{r bench-plots-check}

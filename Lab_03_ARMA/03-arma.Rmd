@@ -13,6 +13,7 @@ output:
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
                       fig.width = 8, fig.height = 4.5)
+source("plot_innovations.R")
 ```
 
 > **Slides vs lab.** Lecture slides emphasise theory, figures, and hand calculations.  
@@ -113,15 +114,9 @@ fit <- pelt |> model(
   auto = ARIMA(Lynx ~ PDQ(0, 0, 0))
 )
 glance(fit) |> arrange(AICc)
-innov <- fit |>
-  augment() |>
-  filter(.model == "auto", !is.na(.innov)) |>
-  as_tibble() |>
-  select(Year, .innov) |>
-  as_tsibble(index = Year)
-
-autoplot(innov, .innov) + labs(title = "ARIMA auto — innovation residuals", y = NULL)
-innov |> ACF(.innov) |> autoplot() + labs(title = "ACF of innovations")
+# Posit Cloud: augment() + feasts::ACF() gets an empty series for this ARIMA.
+e <- arima_resid(pelt$Lynx, fit[["auto"]][[1]])
+plot_innovations(pelt$Year, e, "ARIMA auto — innovation residuals")
 ```
 
 # Your turn

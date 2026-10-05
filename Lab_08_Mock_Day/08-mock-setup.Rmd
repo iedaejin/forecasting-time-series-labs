@@ -16,6 +16,7 @@ output:
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
                       fig.width = 8, fig.height = 4.5)
+source("plot_innovations.R")
 ```
 
 # Purpose
@@ -82,19 +83,10 @@ series/numbers.)
 # Recreating a residual-diagnostics check (like Section C3)
 
 ```{r}
-innov <- fit_c2 |>
-  augment() |>
-  filter(.model == "arima", !is.na(.innov)) |>
-  as_tibble() |>
-  select(Month, .innov) |>
-  as_tsibble(index = Month)
-
-autoplot(innov, .innov) + labs(title = "ARIMA — innovation residuals", y = NULL)
-innov |> ACF(.innov) |> autoplot() + labs(title = "ACF of innovations")
-
-augment(fit_c2) |>
-  filter(.model == "arima") |>
-  features(.innov, ljung_box, lag = 24, dof = 4)
+# Posit Cloud: feasts::ACF() / ljung_box on augment() stops if innovations are empty.
+e <- arima_resid(train_c2$Turnover, fit_c2[["arima"]][[1]])
+plot_innovations(train_c2$Month, e, "ARIMA — innovation residuals")
+if (length(e) > 24) print(Box.test(e, lag = 24, type = "Ljung-Box", fitdf = 4))
 ```
 
 **Practice:** based on the ACF plot and the Ljung–Box `p_value`, are these residuals
@@ -105,6 +97,6 @@ consistent with white noise? What would you do next if not?
 # After you've tried it yourself
 
 Compare your written answers against the class debrief. If your interpretation
-of any of `report()`, `accuracy()`, or `gg_tsresiduals()` output didn't match, that's
+of any of `report()`, `accuracy()`, or the residual ACF didn't match, that's
 exactly the kind of gap Section C of the exam is designed to probe — revisit
 `readings/07-readings.md` before the mock.

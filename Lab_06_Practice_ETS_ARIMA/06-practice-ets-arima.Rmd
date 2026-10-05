@@ -112,7 +112,7 @@ arrivals_jp |> autoplot(Arrivals) +
 1. Describe what changes over time in this series (trend direction, seasonal
    amplitude, any structural breaks you can see).
 2. Fit `ETS(Arrivals)` and `ARIMA(Arrivals)` (auto, let it choose a transform/order).
-3. Run `gg_tsresiduals()` for both. Does either show leftover autocorrelation?
+3. Plot innovation residuals and their ACF with `stats::acf()` (or `plot_innovations()` from the other labs). `gg_tsresiduals()` fails on Posit Cloud when the innovation series is empty. Does either model show leftover autocorrelation?
 4. Compare `accuracy()` on a holdout of the last 3 years.
 5. Which model handles the structural change more gracefully? Justify using both the
    plot and the diagnostics.

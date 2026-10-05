@@ -13,6 +13,7 @@ output:
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
                       fig.width = 8, fig.height = 4.5)
+source("plot_innovations.R")
 ```
 
 > **Slides vs lab.** Lecture slides emphasise theory, figures, and hand calculations.
@@ -64,27 +65,16 @@ tidy(fit |> select(dyn)) |>
 ```
 
 ```{r}
-innov_lm <- fit |>
-  augment() |>
-  filter(.model == "lm", !is.na(.innov)) |>
-  as_tibble() |>
-  select(Quarter, .innov) |>
-  as_tsibble(index = Quarter)
+# Posit Cloud: feasts::ACF() stops if fable innovations come back empty.
+e_lm <- lm_resid(Consumption ~ Income, us_change, fit[["lm"]][[1]])
+plot_innovations(us_change$Quarter, e_lm, "TSLM — innovation residuals")
 
-autoplot(innov_lm, .innov) +
-  labs(title = "Regression with ARIMA errors? (lm) — innovations", y = NULL)
-innov_lm |> ACF(.innov) |> autoplot() + labs(title = "ACF of innovations (lm)")
-
-innov_dyn <- fit |>
-  augment() |>
-  filter(.model == "dyn", !is.na(.innov)) |>
-  as_tibble() |>
-  select(Quarter, .innov) |>
-  as_tsibble(index = Quarter)
-
-autoplot(innov_dyn, .innov) +
-  labs(title = "Dynamic regression (dyn) — innovations", y = NULL)
-innov_dyn |> ACF(.innov) |> autoplot() + labs(title = "ACF of innovations (dyn)")
+e_dyn <- arima_resid(
+  us_change$Consumption,
+  fit[["dyn"]][[1]],
+  xreg = cbind(Income = us_change$Income)
+)
+plot_innovations(us_change$Quarter, e_dyn, "ARIMA errors — innovation residuals")
 ```
 
 Compare the two residual ACF panels: `dyn` should look much closer to white noise than `lm`.
