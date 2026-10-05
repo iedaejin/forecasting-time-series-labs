@@ -93,18 +93,23 @@ fc |>
 
 # Residuals
 
-Use innovations from `augment()` on a clean single-series tsibble (reliable on Posit Cloud):
+Innovation residuals from the fitted auto-ARIMA (`residuals()` keeps the `Year` index and avoids filtering `augment()` by `.model`):
 
 ```{r}
 innov <- fit |>
-  augment() |>
-  filter(.model == "arima_auto", !is.na(.innov)) |>
-  as_tibble() |>
-  select(Year, .innov) |>
-  as_tsibble(index = Year)
+  select(arima_auto) |>
+  residuals() |>
+  filter(!is.na(.resid))
 
-autoplot(innov, .innov) + labs(title = "ARIMA auto — innovation residuals", y = NULL)
-innov |> ACF(.innov) |> autoplot() + labs(title = "ACF of innovations")
+if (nrow(innov) == 0) {
+  stop(
+    "No residuals for model 'arima_auto'. Fitted models: ",
+    paste(unique(augment(fit)$.model), collapse = ", ")
+  )
+}
+
+autoplot(innov, .resid) + labs(title = "ARIMA auto — innovation residuals", y = NULL)
+innov |> ACF(.resid) |> autoplot() + labs(title = "ACF of innovations")
 ```
 
 # Your turn
