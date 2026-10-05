@@ -93,23 +93,28 @@ fc |>
 
 # Residuals
 
-Innovation residuals from the fitted auto-ARIMA (`residuals()` keeps the `Year` index and avoids filtering `augment()` by `.model`):
+`residuals()` on a transformed ARIMA can return an empty series on some Posit Cloud package versions. Build innovations from `augment()` instead (`.innov` when present, otherwise a log residual).
 
 ```{r}
-innov <- fit |>
-  select(arima_auto) |>
-  residuals() |>
-  filter(!is.na(.resid))
+aug <- as_tibble(augment(fit))
+aug <- aug[aug$.model == "arima_auto", , drop = FALSE]
 
-if (nrow(innov) == 0) {
-  stop(
-    "No residuals for model 'arima_auto'. Fitted models: ",
-    paste(unique(augment(fit)$.model), collapse = ", ")
-  )
+if (".innov" %in% names(aug) && any(!is.na(aug$.innov))) {
+  e <- aug$.innov
+} else if (any(!is.na(aug$.fitted)) && any(aug$GDP > 0, na.rm = TRUE)) {
+  # .fitted may be on the GDP scale or already on the log scale
+  fitted_big <- stats::median(abs(aug$.fitted), na.rm = TRUE) > 1000
+  e <- if (fitted_big) log(aug$GDP) - log(aug$.fitted) else log(aug$GDP) - aug$.fitted
+} else {
+  e <- aug$.resid
 }
 
-autoplot(innov, .resid) + labs(title = "ARIMA auto — innovation residuals", y = NULL)
-innov |> ACF(.resid) |> autoplot() + labs(title = "ACF of innovations")
+innov <- tibble::tibble(Year = aug$Year, e = e)
+innov <- innov[!is.na(innov$e), ]
+innov <- as_tsibble(innov, index = Year)
+
+autoplot(innov, e) + labs(title = "ARIMA auto — innovation residuals", y = NULL)
+innov |> ACF(e) |> autoplot() + labs(title = "ACF of innovations")
 ```
 
 # Your turn
