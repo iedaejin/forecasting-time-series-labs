@@ -74,7 +74,8 @@ fit <- beer |>
   )
 
 report(fit |> select(tslm))
-glance(fit) |> arrange(AICc)
+# AICc is only comparable within a model class (not TSLM vs ETS vs SNAIVE)
+glance(fit |> select(tslm)) |> select(r_squared, adj_r_squared, AICc)
 ```
 
 ```{r}
@@ -111,8 +112,61 @@ fc_ho |> autoplot(beer, level = NULL) +
   labs(title = "Hold-out forecasts (train through 2007 Q4)")
 ```
 
+# Is TSLM the problem? Same formula, different training window
+
+FPP3 §7.4 fits the Beer TSLM from 1992 onward. Compare that with the full-sample fit and a
+piecewise trend (FPP3 §7.7), on the same hold-out.
+
+```{r}
+train92 <- beer |> filter_index("1992 Q1" ~ "2007 Q4")
+
+fit_win <- bind_cols(
+  train |> model(
+    tslm_1956 = TSLM(Beer ~ trend() + season()),
+    tslm_knots = TSLM(Beer ~ trend(knots = yearquarter(c("1975 Q1", "1990 Q1"))) + season()),
+    ets = ETS(Beer)
+  ),
+  train92 |> model(tslm_1992 = TSLM(Beer ~ trend() + season()))
+)
+
+fc_win <- fit_win |> forecast(h = nrow(test))
+accuracy(fc_win, beer) |> select(.model, RMSE, MAE, MAPE) |> arrange(RMSE)
+```
+
+Now look at the **prediction intervals** (80% and 95%), not just the point forecasts:
+
+```{r}
+fc_win |>
+  filter(.model %in% c("tslm_1956", "tslm_1992")) |>
+  autoplot(beer |> filter_index("1985 Q1" ~ .)) +
+  facet_wrap(~.model, ncol = 2) +
+  labs(title = "Same TSLM formula, different training window", y = "Megalitres")
+```
+
+The 1956 model has wide intervals, yet the actual values sit near the lower edge: the error is
+systematic, not random. Intervals are only trustworthy when the residuals look like white noise.
+
+# Correlation is not causation
+
+Two series with no causal link, both trending upward over 1970--2011.
+
+```{r}
+spur <- aus_airpassengers |>
+  filter_index("1970" ~ "2011") |>
+  left_join(guinea_rice, by = "Year")
+
+fit_spur <- spur |> model(TSLM(Passengers ~ Production))
+report(fit_spur)
+augment(fit_spur) |> features(.innov, ljung_box, lag = 10)
+```
+
+A very high $R^2$ and a huge $t$-value, but strongly autocorrelated residuals (small Ljung--Box $p$-value):
+the shared trend, not rice, "explains" Australian air travel. We formalise this in Session 10.
+
 # Your turn
 
 1. Add only `trend()` (no season) and compare residual seasonality with `plot_innovations()` (same helper as above). `gg_tsresiduals()` fails on Posit Cloud when the innovation series is empty.
 2. Interpret the largest seasonal coefficient (`report()`) in one sentence, relative to the omitted quarter.
-3. From the hold-out table above, which model wins on RMSE? Does the winner match the in-sample AICc ranking?
+3. From the hold-out table above, which model wins on RMSE? The full-sample TSLM has a respectable in-sample $R^2$ --- why does that not protect it on the hold-out?
+4. Plot `spur` with `autoplot()` for each series. In one sentence, explain why the regression above is not evidence that rice production causes air travel.
+5. Check the residuals of `tslm_1992` with `plot_innovations()` (or a Ljung--Box test). Are they closer to white noise than those of `tslm_1956`? What does that say about trusting each model's prediction intervals?
