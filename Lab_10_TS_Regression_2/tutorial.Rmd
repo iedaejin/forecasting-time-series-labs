@@ -20,13 +20,15 @@ lab_prompts <- c(
   q1 = "Relative likelihood of a model with Delta AICc = 6 is about:",
   q2 = "Two independent random walks regressed on each other often show:",
   q3 = "A scenario forecast needs:",
-  q4 = "In one sentence, why is a significant slope not enough to claim causation?"
+  q4 = "In one sentence, why is a significant slope not enough to claim causation?",
+  q5 = "Time-series CV of a TSLM that plugs in the actual future x measures:",
+  q6 = "In the CV, lm1 (Income only) has higher RMSE than MEAN at every horizon. For forecasting you should:"
 )
 ```
 
 ## What you will do
 
-Relative likelihood and the spurious-regression warning.
+Relative likelihood, time-series cross-validation, scenarios and the spurious-regression warning.
 
 Open this file and click **Run Document**. Packages: `fpp3`, `learnr`.
 Exercise chunks run when you click Run Code. They are not knitted in one pass.
@@ -70,6 +72,28 @@ question_text(
   open_answer(),
   placeholder = "Shared trend / unit roots can create a significant slope.",
   trim = TRUE
+)
+```
+```{r q5}
+question(
+  lab_prompts[["q5"]],
+  answer("Ex-post accuracy: the model given x, ignoring error in forecasting x", correct = TRUE),
+  answer("Ex-ante accuracy: exactly what a real forecast would achieve"),
+  answer("In-sample fit, like the leave-one-out CV in glance()"),
+  answer("The uncertainty in forecasting x"),
+  allow_retry = TRUE,
+  random_answer_order = TRUE
+)
+```
+```{r q6}
+question(
+  lab_prompts[["q6"]],
+  answer("Prefer MEAN (or a better regression) over lm1", correct = TRUE),
+  answer("Keep lm1 because its slope is significant"),
+  answer("Keep lm1 because its in-sample R-squared is positive"),
+  answer("Use lm1 for scenarios anyway"),
+  allow_retry = TRUE,
+  random_answer_order = TRUE
 )
 ```
 

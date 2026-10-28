@@ -50,6 +50,18 @@ aicc_tab |>
 You should see `lm2` as best (`delta_AICc = 0`, `rel_likelihood = 1`), `lm3` with
 `delta_AICc ~ 18.5` (`rel_likelihood ~ 9.4e-05`), and `lm1` essentially ruled out.
 
+## Four selection criteria (FPP3 Section 7.5)
+
+```{r}
+glance(fit) |>
+  select(.model, adj_r_squared, CV, AICc, BIC) |>
+  arrange(AICc)
+```
+
+All four agree on `lm2` here. FPP3 recommends AICc or CV; adjusted $R^2$ tends to keep too
+many predictors. The `CV` column is the *leave-one-out* statistic, which ignores time order —
+the next section does cross-validation the time-series way.
+
 # Data: US consumption growth
 
 ```{r}
@@ -67,32 +79,84 @@ e <- lm_resid(
 plot_innovations(us_change$Quarter, e, "lm2 — innovation residuals")
 ```
 
-# Scenario forecasts: Income +/-1% for the next 8 quarters
+# Time-series cross-validation (FPP3 Section 5.10)
 
-We hold Income at $\pm 1\%$ around its recent average and forecast Consumption from the
-best nested model (`lm2` uses Savings and Unemployment too; here we illustrate the
-Income-only scenario mechanics with a simpler model so only Income needs an assumption).
+Expanding window: each fold (`.id`) trains on quarters $1,\dots,t$ and forecasts $t+1,\dots,t+4$.
+We drop the last 4 quarters before stretching so **every** fold has 4 future quarters to score.
+
+**Why ex-post?** A regression needs future values of its predictors. Here we plug in the
+*actual* future Income, Savings and Unemployment from the data. That scores the model
+*given* $x$ — real (ex-ante) forecasts would also carry the error of guessing $x$, so these
+numbers are optimistic. `MEAN()` needs no predictors and is a genuine ex-ante benchmark.
 
 ```{r}
-fit_income <- us_change |> model(lm = TSLM(Consumption ~ Income))
+cv_data <- us_change |>
+  slice(1:(n() - 4)) |>
+  stretch_tsibble(.init = 100, .step = 1)
+max(cv_data$.id)   # number of folds
 
-base_income <- mean(tail(us_change$Income, 8))
+cv_fit <- cv_data |>
+  model(
+    mean = MEAN(Consumption),
+    lm1 = TSLM(Consumption ~ Income),
+    lm2 = TSLM(Consumption ~ Income + Savings + Unemployment),
+    lm3 = TSLM(Consumption ~ Income + Savings)
+  )
 
+# Future predictor values for each fold (ex-post: the actual x)
+future_x <- new_data(cv_data, 4) |>
+  left_join(us_change |> select(-Consumption), by = "Quarter")
+
+cv_fc <- forecast(cv_fit, new_data = future_x) |>
+  group_by(.id, .model) |>
+  mutate(h = row_number()) |>
+  ungroup() |>
+  as_fable(response = "Consumption", distribution = Consumption)
+
+cv_fc |>
+  accuracy(us_change, by = c("h", ".model")) |>
+  select(h, .model, RMSE) |>
+  pivot_wider(names_from = h, values_from = RMSE, names_prefix = "h=") |>
+  arrange(`h=1`)
+```
+
+Expect `lm2` best at every horizon (RMSE ~ 0.42 at $h=1$), the same ranking as AICc for
+`lm1`–`lm3`. Note that `lm1` (Income only) is *worse than the historical mean* out of sample.
+This is the same pipeline you need for A2, Part 4: change `.init`, the horizon in `new_data()`, and
+the models.
+
+# Scenario forecasts: Increase vs Decrease for the next 8 quarters
+
+As in FPP3 Section 7.6, we use `lm2`, the model that won the CV (`lm1` lost to the mean, so
+it is not worth forecasting with). `lm2` has three predictors, so every scenario must set all three:
+
+- **Increase**: Income $+1\%$, Savings $+0.5\%$, Unemployment $0$ per quarter
+- **Decrease**: Income $-1\%$, Savings $-0.5\%$, Unemployment $0$ per quarter
+
+```{r}
 future_scenarios <- scenarios(
-  Increase = new_data(us_change, 8) |> mutate(Income = 1.01 * base_income),
-  Decrease = new_data(us_change, 8) |> mutate(Income = 0.99 * base_income),
+  Increase = new_data(us_change, 8) |>
+    mutate(Income = 1, Savings = 0.5, Unemployment = 0),
+  Decrease = new_data(us_change, 8) |>
+    mutate(Income = -1, Savings = -0.5, Unemployment = 0),
   names_to = "Scenario"
 )
 
-fc_scenarios <- forecast(fit_income, new_data = future_scenarios)
-fc_scenarios
+fc_scenarios <- forecast(fit |> select(lm2), new_data = future_scenarios)
+fc_scenarios |> hilo(80)
 
-fc_scenarios |>
-  autoplot(level = NULL) +
-  autolayer(us_change |> filter_index("2015 Q1" ~ .), Consumption) +
-  labs(title = "Consumption forecasts under \u00b11% Income scenarios",
+us_change |>
+  filter_index("2014 Q1" ~ .) |>
+  autoplot(Consumption) +
+  autolayer(fc_scenarios, level = 80, alpha = 0.4) +
+  labs(title = "Consumption under lm2 scenarios (80% intervals)",
        y = "Consumption growth (%)")
 ```
+
+Expect means of about $1.00$ (Increase) and $-0.46$ (Decrease), with 80% intervals
+$[0.59, 1.40]$ and $[-0.87, -0.05]$: clearly separated. But they are **conditional on the
+assumed predictor paths**: they do not include any uncertainty about future Income, Savings or
+Unemployment (FPP3 Section 7.6), so the real uncertainty is wider.
 
 # Spurious regression demonstration (`set.seed(1)`)
 
@@ -127,8 +191,13 @@ lag-1 ACF $\approx 0.96$ — despite `x` and `y` being generated with no relatio
 
 # Your turn
 
-1. Drop `Unemployment` from `lm2`; confirm the AICc/relative-likelihood ranking changes as expected.
+1. Fit `lm4 = TSLM(Consumption ~ Income + Unemployment)` (drop `Savings` from `lm2`). Compute its
+   $\Delta$AICc and relative likelihood against `lm2`. Which predictor costs more to drop, Savings or
+   Unemployment?
 2. Re-run the spurious-regression demo with `set.seed(2)`. Does the sign of the slope change? Does the
    qualitative message (high residual ACF) still hold?
-3. Write two sentences to a stakeholder explaining why the $\pm1\%$ Income scenarios are assumptions,
+3. Write two sentences to a stakeholder explaining why the Increase/Decrease scenarios are assumptions,
    not predictions.
+4. In the CV section, change the horizon to 8 quarters (`slice(1:(n() - 8))`, `new_data(cv_data, 8)`).
+   Does `lm2` still win at every horizon? Why are these CV numbers optimistic compared with a real
+   forecast made in 2019?
