@@ -41,7 +41,8 @@ param_counts
 ```
 
 Expect `dummies = 3, 51` and `fourier_K2 = 4, 4` for $m=4,52$ — a $\sim92\%$ reduction at
-$m=52$, $K=2$.
+$m=52$, $K=2$. For $m=4$ that 4 is nominal $2K$. The next chunk drops the zero sine, so the
+effective count is 3. For $m=52$, $K=2$ is far below $m/2$, so both sines stay.
 
 ## The Nyquist coincidence at $K = m/2$ (quarterly, $m=4$)
 
@@ -104,12 +105,86 @@ e <- lm_resid(Beer ~ t + s1 + c1, beer_f, fit[["f1"]][[1]])
 plot_innovations(beer$Quarter, e, "Fourier K=1 — innovation residuals")
 ```
 
-# Weekly-style discussion
+# Weekly data: US gasoline ($m \approx 52.18$)
 
-For $m=52$, $K=2$ needs 4 parameters versus 51 dummy columns. Dynamic harmonic regression
-(Session 12) combines a small-$K$ Fourier seasonal term with ARIMA errors for the
-remaining short-run dynamics — this is the standard approach for weekly series with
-annual seasonality.
+For weekly data a year is not a whole number of weeks. `season()` with an intercept
+estimates 51 dummy coefficients (52 weeks, one level as the baseline); plus the trend
+that is 53 coefficients. Fourier terms handle the non-integer period with a handful of coefficients.
+
+```{r}
+us_gasoline |> autoplot(Barrels) +
+  labs(title = "US finished motor gasoline product supplied",
+       y = "Million barrels per day")
+```
+
+## Dummies vs Fourier: number of coefficients
+
+```{r}
+fit_gas <- us_gasoline |>
+  model(
+    dummies = TSLM(Barrels ~ trend() + season()),
+    f6 = TSLM(Barrels ~ trend() + fourier(K = 6))
+  )
+glance(fit_gas) |> select(.model, df, AICc)
+```
+
+`df` counts the estimated coefficients: 53 for the dummies (51 seasonal + intercept + trend),
+14 for `fourier(K = 6)` (12 + intercept + trend). Fourier wins on AICc (lower is better).
+
+## Choosing $K$ with an AICc grid
+
+```{r}
+K_grid <- c(1:12, 14, 16, 20, 26)
+gas_aicc <- purrr::map_dfr(K_grid, function(K) {
+  us_gasoline |>
+    model(TSLM(Barrels ~ trend() + fourier(K = K))) |>
+    glance() |>
+    transmute(K = K, AICc)
+})
+gas_aicc |> arrange(AICc) |> head(3)
+
+ggplot(gas_aicc, aes(K, AICc)) +
+  geom_line() + geom_point() +
+  labs(title = "AICc against the number of harmonics K", x = "K")
+```
+
+## Residuals: the TSLM is not enough
+
+```{r}
+augment(fit_gas |> select(f6)) |> features(.innov, ljung_box, lag = 104)
+```
+
+The seasonal shape is captured, but the residuals are strongly autocorrelated: the level
+wanders and a straight trend cannot follow it (same lesson as Session 9).
+
+## Dynamic harmonic regression: Fourier + ARIMA errors
+
+`PDQ(0, 0, 0)` stops `ARIMA()` from adding seasonal ARIMA terms, so the season comes only
+from the Fourier terms. We re-check a few values of $K$ inside `ARIMA()`.
+Compare those AICc values with each other only: the ARIMA errors are differenced, so this
+AICc is not on the same scale as the TSLM AICc above.
+
+```{r}
+dhr <- us_gasoline |>
+  model(
+    K4 = ARIMA(Barrels ~ fourier(K = 4) + PDQ(0, 0, 0)),
+    K6 = ARIMA(Barrels ~ fourier(K = 6) + PDQ(0, 0, 0)),
+    K8 = ARIMA(Barrels ~ fourier(K = 8) + PDQ(0, 0, 0))
+  )
+glance(dhr) |> select(.model, AICc) |> arrange(AICc)
+dhr |> select(K6) |> report()
+```
+
+```{r}
+dhr |> select(K6) |>
+  forecast(h = "2 years") |>
+  autoplot(us_gasoline |> filter_index("2010 W01" ~ .)) +
+  labs(title = "DHR with K = 6: 2-year forecast with 80% and 95% intervals",
+       y = "Million barrels per day")
+```
+
+The errors are ARIMA(0,1,1): the level follows a stochastic trend, so the prediction
+intervals widen with the horizon. Always report them alongside the point forecast.
 
 # Your turn
 
@@ -117,3 +192,5 @@ annual seasonality.
 2. For Beer, does `f1` show more residual seasonality than `f2` in the residual ACF (`plot_innovations()`)? Explain using the
    parameter-count argument.
 3. At what $K$ would you stop increasing harmonics for a weekly series, and why (hint: AICc plateau)?
+4. For `us_gasoline`, compare the forecast intervals of the `f6` TSLM and the `K6` DHR model
+   (`forecast(h = "2 years")`, then `hilo()`). Which one is wider at $h = 104$ weeks, and why?
