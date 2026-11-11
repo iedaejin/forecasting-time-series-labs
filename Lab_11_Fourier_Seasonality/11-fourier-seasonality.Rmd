@@ -160,18 +160,27 @@ wanders and a straight trend cannot follow it (same lesson as Session 9).
 ## Dynamic harmonic regression: Fourier + ARIMA errors
 
 `PDQ(0, 0, 0)` stops `ARIMA()` from adding seasonal ARIMA terms, so the season comes only
-from the Fourier terms. We re-check a few values of $K$ inside `ARIMA()`.
+from the Fourier terms. The search on this series selects ARIMA(0,1,1) errors for each of
+these $K$; the order is fixed below so the AICc comparison is only about $K$.
 Compare those AICc values with each other only: the ARIMA errors are differenced, so this
 AICc is not on the same scale as the TSLM AICc above.
 
 ```{r}
 dhr <- us_gasoline |>
   model(
-    K4 = ARIMA(Barrels ~ fourier(K = 4) + PDQ(0, 0, 0)),
-    K6 = ARIMA(Barrels ~ fourier(K = 6) + PDQ(0, 0, 0)),
-    K8 = ARIMA(Barrels ~ fourier(K = 8) + PDQ(0, 0, 0))
+    K4 = ARIMA(Barrels ~ fourier(K = 4) + pdq(0, 1, 1) + PDQ(0, 0, 0)),
+    K6 = ARIMA(Barrels ~ fourier(K = 6) + pdq(0, 1, 1) + PDQ(0, 0, 0)),
+    K8 = ARIMA(Barrels ~ fourier(K = 8) + pdq(0, 1, 1) + PDQ(0, 0, 0))
   )
-glance(dhr) |> select(.model, AICc) |> arrange(AICc)
+# glance() omits AICc when a fit stored it as NULL, and select() then stops the knit.
+g <- glance(dhr)
+if (!"AICc" %in% names(g)) {
+  g <- purrr::map_dfr(c("K4", "K6", "K8"), function(nm) {
+    ic <- tryCatch(dhr[[nm]][[1]]$fit$fit$AICc, error = function(e) NULL)
+    tibble(.model = nm, AICc = if (is.null(ic) || !length(ic)) NA_real_ else as.numeric(ic)[1])
+  })
+}
+g |> select(.model, AICc) |> arrange(AICc)
 dhr |> select(K6) |> report()
 ```
 
