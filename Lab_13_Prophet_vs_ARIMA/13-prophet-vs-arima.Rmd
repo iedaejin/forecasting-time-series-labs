@@ -16,8 +16,9 @@ knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
 ```
 
 > **Slides vs lab.** Slides expand Prophet theory (trend, Fourier season, holidays).
-> This lab runs the Beer bake-off. **Prophet is optional**: the guarded chunk skips
-> cleanly if `fable.prophet` is not installed.
+> This lab runs the Beer bake-off, then fits Prophet two ways: through `fable.prophet`
+> (inside the `fable` workflow) and through Meta's standard `prophet` package.
+> **Prophet is optional**: each Prophet chunk skips cleanly if its package is not installed.
 
 # Packages
 
@@ -69,17 +70,148 @@ if (requireNamespace("fable.prophet", quietly = TRUE)) {
       prophet = prophet(Beer ~ season(period = 4, order = 2))
     )
   fc_prophet <- fit_prophet |> forecast(h = nrow(test))
-  accuracy(fc_prophet, beer) |> select(.model, RMSE, MAE, MAPE)
+  # print(): inside if {}, only the last value would be shown otherwise
+  print(accuracy(fc_prophet, beer) |> select(.model, RMSE, MAE, MAPE))
   # Components (trend / season) - useful for communication slides
-  fit_prophet |> components() |> autoplot()
+  print(fit_prophet |> components() |> autoplot())
 } else {
   message("fable.prophet not installed - skipping Prophet chunk")
   message("Install with install.packages('fable.prophet') if you have a Stan toolchain.")
 }
 ```
 
+# Optional: the standard `prophet` package
+
+`fable.prophet` is a wrapper: underneath, it calls Meta's `prophet` package
+(documentation: <https://meta.github.io/prophet/>). Most Prophet tutorials, and the Python
+version, use this standard interface directly. It fits the **same model** but works differently:
+
+| | `fable.prophet` | `prophet` |
+|---|---|---|
+| Data | `tsibble` | data frame with columns `ds` (date) and `y` |
+| Seasonality | `season(period = 4)` in quarters | `add_seasonality(period = 365.25)` in **days** |
+| Forecast | `forecast(fit, h = 10)` | `predict(m, make_future_dataframe(m, 10, freq = "quarter"))` |
+| Evaluation | `accuracy()`, `stretch_tsibble()` | compute by hand; `cross_validation()` |
+
+```{r prophet-check}
+has_prophet <- requireNamespace("prophet", quietly = TRUE)
+if (!has_prophet) {
+  message("prophet not installed - skipping this section.")
+  message("Install with install.packages('prophet') (needs a Stan toolchain).")
+}
+```
+
+## Data: `ds` and `y`
+
+`prophet` needs real dates. `as.Date()` turns each quarter into its first day.
+
+```{r, eval = has_prophet}
+library(prophet)
+df_train <- train |> as_tibble() |> transmute(ds = as.Date(Quarter), y = Beer)
+df_test <- test |> as_tibble() |> transmute(ds = as.Date(Quarter), y = Beer)
+head(df_train)
+```
+
+## Fit
+
+Prophet's automatic seasonalities assume daily data: yearly with order 10, plus weekly and
+daily. With 4 observations a year, switch them off and add one yearly season with
+`fourier.order = 2`, the same model as `season(period = 4, order = 2)` above. The period is
+365.25 because `prophet` measures time in days.
+
+```{r, eval = has_prophet}
+set.seed(2026)  # the interval bands are simulated
+m <- prophet(yearly.seasonality = FALSE, weekly.seasonality = FALSE,
+             daily.seasonality = FALSE)
+m <- add_seasonality(m, name = "yearly", period = 365.25, fourier.order = 2)
+m <- fit.prophet(m, df_train)
+```
+
+`prophet()` with no data only builds the specification; `fit.prophet()` estimates it.
+
+## Forecast
+
+```{r, eval = has_prophet}
+future <- make_future_dataframe(m, periods = nrow(df_test), freq = "quarter")
+fcst <- predict(m, future)
+tail(fcst[, c("ds", "yhat", "yhat_lower", "yhat_upper")])
+```
+
+`future` holds the training dates **plus** 10 new quarters, so `fcst` contains fitted values
+and forecasts together. `yhat_lower` / `yhat_upper` form an **80%** interval by default
+(`interval.width`).
+
+```{r, eval = has_prophet}
+plot(m, fcst) + add_changepoints_to_plot(m) +
+  labs(title = "prophet: Beer forecast with detected changepoints",
+       x = NULL, y = "Megalitres")
+prophet_plot_components(m, fcst)
+```
+
+The red dashed lines are changepoints whose slope change is not shrunk to zero. All 25
+candidates lie in the first 80% of the training data: the last 20% has none, so the final
+slope is carried forward unchanged.
+
+## Hold-out accuracy and interval coverage
+
+There is no `accuracy()` here: join the forecasts to the test set and compute the measures.
+
+```{r, eval = has_prophet}
+res <- df_test |>
+  left_join(fcst |> transmute(ds = as.Date(ds), yhat, yhat_lower, yhat_upper),
+            by = "ds")
+res |>
+  summarise(
+    RMSE = sqrt(mean((y - yhat)^2)),
+    MAE = mean(abs(y - yhat)),
+    MAPE = 100 * mean(abs((y - yhat) / y)),
+    coverage_80 = mean(y >= yhat_lower & y <= yhat_upper)
+  )
+```
+
+RMSE should be close to the `fable.prophet` result: same model, same data. `coverage_80` is
+the share of test quarters inside the 80% interval. Compare with ETS:
+
+```{r, eval = has_prophet}
+fc |>
+  filter(.model == "ets") |>
+  hilo(80) |>
+  unpack_hilo(`80%`) |>
+  as_tibble() |>
+  left_join(test |> as_tibble() |> select(Quarter, actual = Beer), by = "Quarter") |>
+  summarise(coverage_80 = mean(actual >= `80%_lower` & actual <= `80%_upper`))
+```
+
+With only 10 test quarters, each quarter moves coverage by 10 points: treat this as a hint,
+not proof. FPP3's warning is that Prophet's intervals ignore leftover residual
+autocorrelation and so tend to be **too narrow**.
+
+## Rolling-origin evaluation
+
+One hold-out is not a final verdict. `cross_validation()` refits the model at several cutoffs
+**inside the training data** and forecasts 2 years ahead from each: the same idea as
+`stretch_tsibble()`. The test set stays untouched.
+
+```{r, eval = has_prophet}
+cv <- cross_validation(m, initial = 30 * 365.25, period = 2 * 365.25,
+                       horizon = 2 * 365.25, units = "days")
+length(unique(cv$cutoff))  # number of forecast origins
+performance_metrics(cv, rolling_window = 1) |>
+  transmute(horizon_years = round(as.numeric(horizon, units = "days") / 365.25, 1),
+            rmse, mae, mape = 100 * mape, coverage)
+```
+
+`rolling_window = 1` averages over all horizons up to 2 years. Use these numbers, not the
+test set, to choose between Prophet settings.
+
 # Your turn
 
 1. Fill a small table: method, RMSE, interpretability (H/M/L), one residual note.
 2. If Prophet ran: does it beat ETS/ARIMA on this hold-out? Relate to FPP3's warning.
 3. When would you present Prophet components to a product manager? When would you insist on an ARIMA+regression bake-off for a risk audience?
+4. Standard `prophet`: refit with `changepoint.prior.scale = 0.005` and `0.5` (default
+   `0.05`). Choose a value using the `cross_validation()` RMSE only, then check the test set
+   **once**. Why would picking the value with the lowest **test** RMSE be cheating?
+5. Standard `prophet`: change `fourier.order` from 2 to 10, the automatic default for yearly
+   seasonality. What happens to the components plot and the hold-out RMSE? Why can 4
+   observations a year not identify 10 sine/cosine pairs?

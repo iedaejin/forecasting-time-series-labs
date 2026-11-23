@@ -31,6 +31,13 @@ The file records your name, the date, and each answer.
 
 The other `.Rmd` in this folder is an optional longer notebook. The file to hand in from this tutorial is the `.txt`.
 
-Prophet is optional and is not required to finish `tutorial.Rmd`.
+Prophet is optional and is not required to finish `tutorial.Rmd`. The longer notebook
+fits it two ways, through `fable.prophet` and through Meta's standard `prophet` package
+(<https://meta.github.io/prophet/>). Each Prophet section skips itself if its package is
+missing. To run them, install once (needs a Stan toolchain):
+
+```r
+install.packages(c("prophet", "fable.prophet"))
+```
 
 **Faculty:** Prof. Dae-Jin Lee (`daelee@faculty.ie.edu`)
