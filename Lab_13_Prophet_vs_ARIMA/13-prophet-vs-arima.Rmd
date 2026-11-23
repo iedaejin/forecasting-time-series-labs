@@ -81,6 +81,33 @@ if (requireNamespace("fable.prophet", quietly = TRUE)) {
 }
 ```
 
+## All five methods together
+
+Put the Prophet forecast next to the bake-off: one accuracy table and one panel per model
+(as on the slides). Same training data, same test quarters, so the comparison is fair.
+
+```{r}
+if (exists("fc_prophet")) {
+  fc_all <- bind_rows(fc, fc_prophet)
+  print(accuracy(fc_all, beer) |> select(.model, RMSE, MAE, MAPE) |> arrange(RMSE))
+  print(
+    fc_all |>
+      autoplot(beer |> filter_index("2005 Q1" ~ .), level = NULL) +
+      geom_vline(xintercept = as.Date(yearquarter("2008 Q1")),
+                 linetype = "dashed", colour = "grey50") +
+      facet_wrap(~.model, nrow = 1) +
+      scale_x_yearquarter(date_breaks = "2 years", date_labels = "%Y") +
+      labs(title = "Beer hold-out: each model's forecast (colour) vs actuals (black)",
+           subtitle = "Dashed = start of test, 2008 Q1", y = "Megalitres", x = NULL) +
+      theme(legend.position = "none")
+  )
+} else {
+  message("No Prophet forecast - the comparison above has four methods only.")
+}
+```
+
+Does Prophet beat SNAIVE? ETS? Where does its forecast miss: level, seasonal shape, or both?
+
 # Optional: the standard `prophet` package
 
 `fable.prophet` is a wrapper: underneath, it calls Meta's `prophet` package
