@@ -83,6 +83,125 @@ plot_innovations(us_change$Quarter, e_dyn, "ARIMA errors — innovation residual
 
 Compare the two residual ACF panels: `dyn` should look much closer to white noise than `lm`.
 
+# Levels or differences?
+
+`us_change` holds growth rates. Cumulating them gives trending **level** series. Let `ARIMA()`
+choose the error model on the levels and compare with the growth-rate fit above.
+
+```{r}
+lv <- us_change |>
+  mutate(C_level = cumsum(Consumption), I_level = cumsum(Income))
+
+lv |> autoplot(vars(C_level, I_level)) +
+  labs(title = "Same data in levels (cumulated growth)")
+
+fit_lv <- lv |> model(levels = ARIMA(C_level ~ I_level))
+report(fit_lv)
+```
+
+Read the error order in `report()`: **ARIMA(1,1,2) errors** means $d = 1$, so `C_level` and
+`I_level` were differenced together before fitting. Differencing a cumulated series gives back the
+growth rate, so the slope on `I_level` matches the `Income` coefficient of `dyn` above
+($\approx 0.198$). With $d = 1$ the coefficient is the effect of a *change* in $x$ on the *change*
+in $y$, and the level intercept differences away: the constant `fable` still labels `intercept` is a
+drift (average change per quarter).
+
+# Lagged predictors: TV adverts and insurance quotes
+
+FPP3 §10.6: does advertising affect quotes this month only, or also next month?
+
+```{r}
+insurance |>
+  pivot_longer(c(Quotes, TVadverts)) |>
+  ggplot(aes(Month, value)) +
+  geom_line() +
+  facet_grid(name ~ ., scales = "free_y") +
+  labs(title = "Insurance quotes and TV advertising", y = NULL)
+```
+
+Compare 0--3 lags of `TVadverts` by AICc. Lags drop observations at the start, so set the first
+three `Quotes` to `NA`: every model is then fitted on the **same 37 months** and AICc is comparable.
+
+```{r}
+fit_lag <- insurance |>
+  mutate(Quotes = c(NA, NA, NA, Quotes[4:40])) |>
+  model(
+    lag0 = ARIMA(Quotes ~ pdq(d = 0) + TVadverts),
+    lag1 = ARIMA(Quotes ~ pdq(d = 0) + TVadverts + lag(TVadverts)),
+    lag2 = ARIMA(Quotes ~ pdq(d = 0) + TVadverts + lag(TVadverts) +
+                   lag(TVadverts, 2)),
+    lag3 = ARIMA(Quotes ~ pdq(d = 0) + TVadverts + lag(TVadverts) +
+                   lag(TVadverts, 2) + lag(TVadverts, 3))
+  )
+glance(fit_lag) |> select(.model, AICc) |> arrange(AICc)
+```
+
+Refit the best model (current + one lag) on all 40 months, then forecast 20 months assuming
+advertising is held at 8 units --- with prediction intervals.
+
+```{r}
+fit_ins <- insurance |>
+  model(ARIMA(Quotes ~ pdq(d = 0) + TVadverts + lag(TVadverts)))
+report(fit_ins)
+
+fc_ins <- forecast(fit_ins,
+                   new_data = new_data(insurance, 20) |> mutate(TVadverts = 8))
+fc_ins |>
+  autoplot(insurance) +
+  labs(title = "Forecast quotes with TV adverts held at 8")
+```
+
+# Dynamic harmonic regression (FPP3 §10.5)
+
+Long or complex seasonality: put **Fourier terms** in the regression and let ARIMA errors handle
+the short-run dynamics. `PDQ(0, 0, 0)` switches off seasonal ARIMA terms, so the Fourier terms carry
+all the seasonality. The assumption (FPP3 §10.5) is that the seasonal pattern does not change over time.
+
+Data: monthly Australian cafe and restaurant turnover, 2004--2018, summed over states.
+
+```{r}
+aus_cafe <- aus_retail |>
+  filter(Industry == "Cafes, restaurants and takeaway food services",
+         year(Month) %in% 2004:2018) |>
+  summarise(Turnover = sum(Turnover))
+
+aus_cafe |> autoplot(Turnover) +
+  labs(title = "Australian cafe & restaurant turnover", y = "$ million")
+```
+
+Fit $K = 1, \dots, 6$ harmonics ($K \le m/2 = 6$). The log stabilises the growing seasonal swings.
+`pdq(d = 1)` fixes the differencing in every model, so the AICc values are comparable.
+
+```{r}
+fit_dhr <- aus_cafe |>
+  model(
+    K1 = ARIMA(log(Turnover) ~ fourier(K = 1) + pdq(d = 1) + PDQ(0, 0, 0)),
+    K2 = ARIMA(log(Turnover) ~ fourier(K = 2) + pdq(d = 1) + PDQ(0, 0, 0)),
+    K3 = ARIMA(log(Turnover) ~ fourier(K = 3) + pdq(d = 1) + PDQ(0, 0, 0)),
+    K4 = ARIMA(log(Turnover) ~ fourier(K = 4) + pdq(d = 1) + PDQ(0, 0, 0)),
+    K5 = ARIMA(log(Turnover) ~ fourier(K = 5) + pdq(d = 1) + PDQ(0, 0, 0)),
+    K6 = ARIMA(log(Turnover) ~ fourier(K = 6) + pdq(d = 1) + PDQ(0, 0, 0))
+  )
+# any_of(): some Posit Cloud stacks omit the AICc column.
+glance(fit_dhr) |> select(.model, any_of("AICc")) |> arrange(across(any_of("AICc")))
+fit_dhr   # the ARIMA error order chosen for each K
+```
+
+$K = 6$ has the lowest AICc, but $K = 5$ is within about 1 point: a near tie, so either is defensible.
+Note that each $K$ gets its own error model; the Fourier terms and the ARIMA errors trade off.
+
+Forecast two years ahead with the best model. No new data is needed: future Fourier terms are
+**known** (they are just sines and cosines of time), so, unlike Income above, there is no
+future-$x$ scenario to invent.
+
+```{r}
+fc_dhr <- fit_dhr |> select(K6) |> forecast(h = "2 years")
+fc_dhr |>
+  autoplot(aus_cafe) +
+  labs(title = "DHR forecast: fourier(K = 6) + ARIMA errors, log scale model",
+       y = "$ million")
+```
+
 # Forecasting with a future-Income path
 
 We assume Income holds at its recent average for the next 8 quarters (a simple,
@@ -97,9 +216,12 @@ fc_dyn <- forecast(fit |> select(dyn), new_data = future_income)
 fc_dyn
 
 fc_dyn |>
-  autoplot(us_change |> filter_index("2015 Q1" ~ .), level = NULL) +
+  autoplot(us_change |> filter_index("2015 Q1" ~ .)) +
   labs(title = "Dynamic regression forecast (Income at recent average)")
 ```
+
+The 80% and 95% intervals include the uncertainty from the error process, but **not** the
+uncertainty in future Income (FPP3 §10.3): they are conditional on the scenario.
 
 # Your turn
 
@@ -109,3 +231,9 @@ fc_dyn |>
    resulting forecast band with the "hold flat" scenario above.
 3. Outline Assignment A2 for your group: which regressors, what lag structure, what future-$x$
    assumption will you use?
+4. Insurance: in one sentence each, interpret the `TVadverts` and `lag(TVadverts)` coefficients.
+   Then forecast with `TVadverts = 10` and compare the forecast and the 95% interval with the
+   `TVadverts = 8` plan. Is the model on levels or differences? How do you know from `report()`?
+5. DHR: forecast `aus_cafe` with the `K5` model as well and plot both forecasts together. Given
+   the near-tie in AICc, do the two forecasts differ in any way that matters? Then fit a seasonal
+   ARIMA on `log(Turnover)` (no Fourier terms) and say which model you would report, and why.
