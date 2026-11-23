@@ -50,18 +50,22 @@ us_change |> autoplot(vars(Consumption, Income)) +
 
 # TSLM vs regression with ARIMA errors
 
+The `ARIMA()` search on this series selects ARIMA(1,0,2) errors; the order is fixed below so
+the lab gives the same fit on every machine.
+
 ```{r}
 fit <- us_change |>
   model(
     lm = TSLM(Consumption ~ Income),
-    dyn = ARIMA(Consumption ~ Income + PDQ(0, 0, 0))
+    dyn = ARIMA(Consumption ~ Income + pdq(1, 0, 2) + PDQ(0, 0, 0))
   )
-glance(fit) |> select(.model, AICc)
+# any_of(): some Posit Cloud stacks omit AICc / std.error columns, and select() then stops the knit.
+glance(fit) |> select(.model, any_of("AICc"))
 report(fit |> select(dyn))
 # Coefficients as numbers (match the slide table --- no barplot)
 tidy(fit |> select(dyn)) |>
   filter(term != "sigma2") |>
-  select(term, estimate, std.error, statistic, p.value)
+  select(term, estimate, any_of(c("std.error", "statistic", "p.value")))
 ```
 
 ```{r}
