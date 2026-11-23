@@ -65,6 +65,7 @@ fc |> autoplot(beer, level = NULL) +
 ```{r}
 if (requireNamespace("fable.prophet", quietly = TRUE)) {
   library(fable.prophet)
+  set.seed(2026)  # Prophet's fit is not deterministic: seed it so your numbers match the slides
   fit_prophet <- train |>
     model(
       prophet = prophet(Beer ~ season(period = 4, order = 2))
