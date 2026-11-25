@@ -20,12 +20,13 @@ install.packages(c("learnr", "fpp3"))
 rmarkdown::run("tutorial.Rmd")
 ```
 
-Every `Lab_00` … `Lab_14` folder has `tutorial.Rmd` and `lab_submission.R`.
+Every `Lab_00` … `Lab_14` folder has `tutorial.Rmd` and `lab_submission.R`. `Lab_16` (extra, not examined) has only a session notebook.
 
 ## Packages
 ```r
 install.packages(c("learnr", "fpp3"))
 install.packages("fable.prophet")  # optional, Lab 13 session notebook
+install.packages(c("ranger", "fGarch"))  # optional, Lab 16 (extra session)
 library(fpp3)
 ```
 
@@ -49,6 +50,7 @@ Open `tutorial.Rmd` in each folder. The session notebook is optional.
 | `Lab_12_ARIMA_Regressors` | `tutorial.Rmd` | 12 |
 | `Lab_13_Prophet_vs_ARIMA` | `tutorial.Rmd` | 13 |
 | `Lab_14_Final_Review` | `tutorial.Rmd` | 14 |
+| `Lab_16_ML_and_Finance` | session notebook only (extra, **not examined**) | 16 |
 
 Session **15** (final exam) has no student lab here.
 

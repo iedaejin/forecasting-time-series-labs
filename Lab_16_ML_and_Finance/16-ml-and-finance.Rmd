@@ -1,0 +1,349 @@
+---
+title: "Session 16 - Time Series, Machine Learning and Finance (R lab)"
+subtitle: "Forecasting for Time Series (PPLEDBA) - extra session, not examined"
+author: "Prof. Dae-Jin Lee (daelee@faculty.ie.edu)"
+date: "Fall 2026"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
+                      fig.width = 8, fig.height = 4.5)
+```
+
+> **Extra session (beyond the course).** This lab is for interest and is **not part of the
+> final exam**. Part A treats forecasting as supervised learning with a random forest
+> (`ranger`). Part B looks at stock returns and fits ARCH/GARCH models (`fGarch`).
+> Each chunk that needs `ranger` or `fGarch` skips cleanly if the package is not installed:
+> `install.packages(c("ranger", "fGarch"))`.
+
+# Packages
+
+```{r}
+library(fpp3)
+has_ranger <- requireNamespace("ranger", quietly = TRUE)
+has_fgarch <- requireNamespace("fGarch", quietly = TRUE)
+if (has_fgarch) library(fGarch)   # attach: its coef(), predict(), residuals() methods are S4
+c(ranger = has_ranger, fGarch = has_fgarch)
+```
+
+# Part A: time series and machine learning
+
+## Data: Australian cafe turnover
+
+Monthly turnover of cafes, restaurants and takeaway food services, all states, 2004-2018.
+We work on the log scale, as in earlier sessions.
+
+```{r}
+cafe <- aus_retail |>
+  filter(Industry == "Cafes, restaurants and takeaway food services",
+         year(Month) %in% 2004:2018) |>
+  summarise(Turnover = sum(Turnover))
+cafe |> autoplot(Turnover) + labs(title = "Australian cafe turnover", y = "$ million")
+```
+
+## From a series to a supervised-learning table
+
+`embed(z, p + 1)` returns a matrix whose first column is $z_t$ and whose next $p$ columns
+are $z_{t-1}, \dots, z_{t-p}$: one row per time point, lags as features.
+
+```{r}
+z <- log(cafe$Turnover)
+E <- embed(z, 12 + 1)
+colnames(E) <- c("y", paste0("lag", 1:12))
+head(round(E[, 1:5], 3))
+dim(E)
+```
+
+A linear regression on this table is an AR(12) estimated by least squares:
+
+```{r}
+coef(lm(y ~ ., data = as.data.frame(E)))[1:4]
+```
+
+A random forest replaces the linear combination with averages of regression trees.
+
+## Recursive forecasting with a random forest
+
+The function fits a forest on the lag table, then forecasts one step at a time and feeds
+each forecast back in as the newest lag.
+
+```{r}
+rf_recursive <- function(z, h, p = 12, seed = 2026) {
+  E <- embed(z, p + 1)
+  colnames(E) <- c("y", paste0("lag", 1:p))
+  set.seed(seed)
+  m <- ranger::ranger(y ~ ., data = as.data.frame(E), num.trees = 500)
+  hz <- z
+  out <- numeric(h)
+  for (i in seq_len(h)) {
+    nd <- as.data.frame(t(rev(tail(hz, p))))   # newest value is lag1
+    names(nd) <- paste0("lag", 1:p)
+    out[i] <- predict(m, nd)$predictions
+    hz <- c(hz, out[i])                         # feed the forecast back in
+  }
+  out
+}
+
+# (a) forest on log levels
+rf_levels <- function(y, h) rf_recursive(y, h)
+
+# (b) forest on the seasonal difference of the log, then undo the difference:
+#     y_t = y_{t-12} + w_t
+rf_sdiff <- function(y, h) {
+  wf <- rf_recursive(diff(y, lag = 12), h)
+  hy <- y
+  for (i in seq_len(h)) hy <- c(hy, hy[length(hy) - 11] + wf[i])
+  tail(hy, h)
+}
+```
+
+## One split: train to 2016, test 2017-2018
+
+```{r}
+train <- cafe |> filter(year(Month) <= 2016)
+test <- cafe |> filter(year(Month) >= 2017)
+h <- nrow(test)
+
+fc_stat <- train |>
+  model(snaive = SNAIVE(log(Turnover)),
+        ets = ETS(log(Turnover)),
+        arima = ARIMA(log(Turnover))) |>
+  forecast(h = h)
+acc <- accuracy(fc_stat, cafe) |> select(.model, RMSE)
+acc
+```
+
+```{r, eval = has_ranger}
+ly <- log(train$Turnover)
+fc_ml <- tibble(Month = test$Month,
+                rf_levels = exp(rf_levels(ly, h)),
+                rf_sdiff = exp(rf_sdiff(ly, h)))
+rmse <- function(f) sqrt(mean((test$Turnover - f)^2))
+acc_all <- bind_rows(acc, tibble(.model = c("rf_levels", "rf_sdiff"),
+                                 RMSE = c(rmse(fc_ml$rf_levels), rmse(fc_ml$rf_sdiff))))
+acc_all |> arrange(RMSE)
+```
+
+## Trees cannot extrapolate
+
+A tree predicts an average of training targets, so the forest on levels can never go above
+the largest value it has seen.
+
+```{r, eval = has_ranger}
+c(train_max = max(train$Turnover),
+  rf_levels_max = max(fc_ml$rf_levels),
+  test_max = max(test$Turnover))
+
+fc_ml |>
+  pivot_longer(-Month, names_to = "model", values_to = "Turnover") |>
+  ggplot(aes(Month, Turnover, colour = model)) +
+  geom_line(data = cafe |> filter(year(Month) >= 2012) |> as_tibble(),
+            aes(Month, Turnover), colour = "black", inherit.aes = FALSE) +
+  geom_line(linewidth = 1) +
+  geom_hline(yintercept = max(train$Turnover), linetype = "dashed") +
+  labs(title = "Random forest forecasts, 2017-2018",
+       subtitle = "Dashed line: largest value in the training data", y = "$ million")
+```
+
+Modelling the seasonal difference turns an extrapolation problem (a growing level) into
+an interpolation problem (changes that stay in a familiar range). This is the same idea as
+$d$ and $D$ in ARIMA.
+
+## Rolling origins: is the forest really better?
+
+One hold-out is one draw. Repeat the comparison for five forecast origins
+(train up to 2012, ..., 2016; test the next 2 years each time).
+
+```{r, eval = has_ranger}
+run_origin <- function(end_year) {
+  tr <- cafe |> filter(year(Month) <= end_year)
+  te <- cafe |> filter(year(Month) %in% (end_year + 1):(end_year + 2))
+  h <- nrow(te)
+  st <- tr |>
+    model(snaive = SNAIVE(log(Turnover)), ets = ETS(log(Turnover)),
+          arima = ARIMA(log(Turnover))) |>
+    forecast(h = h) |>
+    accuracy(cafe) |>
+    select(.model, RMSE)
+  ly <- log(tr$Turnover)
+  r <- function(f) sqrt(mean((te$Turnover - f)^2))
+  bind_rows(st, tibble(.model = c("rf_levels", "rf_sdiff"),
+                       RMSE = c(r(exp(rf_levels(ly, h))), r(exp(rf_sdiff(ly, h)))))) |>
+    mutate(origin = end_year)
+}
+rolling <- bind_rows(lapply(2012:2016, run_origin))
+
+rolling |>
+  pivot_wider(names_from = origin, values_from = RMSE) |>
+  mutate(mean = rowMeans(across(-.model))) |>
+  arrange(mean) |>
+  mutate(across(where(is.numeric), round))
+```
+
+```{r, eval = has_ranger}
+rolling |>
+  group_by(origin) |>
+  slice_min(RMSE, n = 1) |>
+  select(origin, winner = .model, RMSE)
+```
+
+**Read the table.** Which model wins the 2016 origin (the single split above)? Which model
+has the lowest *mean* RMSE? How many origins does `rf_sdiff` win?
+
+# Part B: time series in finance
+
+## Prices and log returns
+
+`gafa_stock` has daily prices for Apple, Amazon, Facebook and Google, 2014-2018. Trading
+days are irregular (weekends, holidays), so we re-index by trading day, as in FPP3.
+Returns are in percent: $r_t = 100\,(\log P_t - \log P_{t-1})$.
+
+```{r}
+aapl <- gafa_stock |>
+  filter(Symbol == "AAPL") |>
+  mutate(trading_day = row_number()) |>
+  update_tsibble(index = trading_day, regular = TRUE) |>
+  mutate(r = 100 * difference(log(Adj_Close))) |>
+  filter(!is.na(r))
+
+aapl |> autoplot(Adj_Close) + labs(title = "Apple adjusted close", y = "USD")
+aapl |> autoplot(r) + labs(title = "Apple daily log returns", y = "%")
+```
+
+## Stylised facts
+
+```{r}
+aapl |> as_tibble() |>
+  summarise(n = n(), mean = mean(r), sd = sd(r),
+            kurtosis = mean((r - mean(r))^4) / sd(r)^4)
+```
+
+Kurtosis well above 3 means heavy tails: large moves are more common than a normal
+distribution predicts.
+
+```{r}
+aapl |> ACF(r, lag_max = 30) |> autoplot() + labs(title = "ACF of returns")
+aapl |> ACF(r^2, lag_max = 30) |> autoplot() + labs(title = "ACF of squared returns")
+```
+
+```{r}
+aapl |> features(r, ljung_box, lag = 10)
+aapl |> mutate(r2 = r^2) |> features(r2, ljung_box, lag = 10)
+```
+
+Returns themselves show little autocorrelation, but squared returns do: **volatility
+clustering**. Engle's ARCH-LM test checks the same thing. `feasts::stat_arch_lm()` returns
+the $R^2$ of a regression of $r_t^2$ on its lags; the test statistic is $n R^2$.
+
+```{r}
+arch <- aapl |> features(r, stat_arch_lm, lags = 10)
+n <- nrow(aapl)
+c(LM = n * arch$stat_arch_lm,
+  p_value = pchisq(n * arch$stat_arch_lm, df = 10, lower.tail = FALSE))
+```
+
+## GARCH(1,1) by hand
+
+$$
+\sigma_t^2 = \omega + \alpha\,\varepsilon_{t-1}^2 + \beta\,\sigma_{t-1}^2
+$$
+
+The forecast recursion reverts to the long-run variance
+$\bar\sigma^2 = \omega/(1-\alpha-\beta)$ at rate $\alpha+\beta$:
+
+```{r}
+omega <- 0.1; alpha <- 0.1; beta <- 0.8
+sig2_bar <- omega / (1 - alpha - beta)
+sig2_T1 <- omega + alpha * 3^2 + beta * 1.5        # shock 3, variance 1.5 today
+hh <- 1:20
+sig2_h <- sig2_bar + (alpha + beta)^(hh - 1) * (sig2_T1 - sig2_bar)
+round(sig2_h[c(1, 2, 10, 20)], 3)
+log(0.5) / log(alpha + beta)                          # half-life
+```
+
+## Fitting GARCH(1,1) to Apple returns
+
+`garchFit()` fits a constant mean plus GARCH(1,1) errors by maximum likelihood.
+
+```{r, eval = has_fgarch}
+r <- aapl$r
+g_norm <- garchFit(~ garch(1, 1), data = r, cond.dist = "norm", trace = FALSE)
+cf <- coef(g_norm)
+round(cf, 3)
+pers <- unname(cf["alpha1"] + cf["beta1"])
+c(persistence = pers,
+  half_life_days = log(0.5) / log(pers),
+  longrun_daily_sd = sqrt(unname(cf["omega"]) / (1 - pers)),
+  annualised_sd = sqrt(252) * sqrt(unname(cf["omega"]) / (1 - pers)))
+```
+
+## Conditional volatility
+
+```{r, eval = has_fgarch}
+aapl_g <- aapl |> mutate(sigma = volatility(g_norm))
+aapl_g |>
+  ggplot(aes(trading_day)) +
+  geom_line(aes(y = r), colour = "grey50") +
+  geom_line(aes(y = cf["mu"] + 2 * sigma), colour = "red") +
+  geom_line(aes(y = cf["mu"] - 2 * sigma), colour = "red") +
+  labs(title = "Apple returns with GARCH(1,1) ±2 conditional sd",
+       x = "Trading day", y = "%")
+```
+
+## Diagnostics
+
+If the model captures the volatility dynamics, the squared **standardised** residuals
+$\hat z_t^2 = (\hat\varepsilon_t / \hat\sigma_t)^2$ should show no autocorrelation.
+
+```{r, eval = has_fgarch}
+z <- residuals(g_norm, standardize = TRUE)
+Box.test(z^2, lag = 10, type = "Ljung-Box")
+c(kurtosis_z = mean((z - mean(z))^4) / sd(z)^4)
+```
+
+The clustering is gone, but $\hat z_t$ still has heavy tails, which motivates Student-$t$ errors.
+
+## Volatility forecast
+
+```{r, eval = has_fgarch}
+vf <- predict(g_norm, n.ahead = 60)
+tibble(h = 1:60, sd = vf$standardDeviation) |>
+  ggplot(aes(h, sd)) +
+  geom_line(linewidth = 1) +
+  geom_hline(yintercept = sqrt(cf["omega"] / (1 - pers)), linetype = "dashed") +
+  labs(title = "GARCH(1,1) volatility forecast",
+       subtitle = "Dashed line: long-run daily sd",
+       x = "Days ahead", y = "Daily sd (%)")
+```
+
+## Student-t errors
+
+```{r, eval = has_fgarch}
+g_t <- garchFit(~ garch(1, 1), data = r, cond.dist = "std", trace = FALSE)
+round(coef(g_t), 3)
+rbind(normal = g_norm@fit$ics, student_t = g_t@fit$ics)[, c("AIC", "BIC")]
+```
+
+`fGarch` reports AIC per observation, so compare the two rows directly: lower is better.
+`shape` is the degrees of freedom of the $t$ distribution.
+
+# Your turn
+
+1. **Lags.** Refit `rf_sdiff` with `p = 24` lags instead of 12. Does the mean rolling-origin
+   RMSE improve?
+2. **Another learner.** Replace the forest with a linear model on the same lag table
+   (`lm(y ~ ., ...)`). How does this "AR(12) on seasonal differences" compare with
+   `rf_sdiff` and with `ARIMA()`?
+3. **Leakage.** Suppose you add a feature "mean of $y$ over the 12 months *centred* on $t$".
+   Why would this give an excellent test RMSE and useless real forecasts?
+4. **Another stock.** Repeat Part B for Amazon (`"AMZN"`). Compare $\alpha$, $\beta$,
+   persistence and half-life with Apple.
+5. **ARCH vs GARCH.** Fit `~ garch(1, 0)` (an ARCH(1)) to Apple returns. Compare its AIC
+   with GARCH(1,1). Does the Ljung-Box test on $\hat z_t^2$ still pass?
+6. **Interpretation.** If $\alpha + \beta = 0.99$, what is the half-life of a volatility
+   shock? What does that say about how long a turbulent market stays turbulent?
