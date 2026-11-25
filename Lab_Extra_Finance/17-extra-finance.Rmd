@@ -1,0 +1,173 @@
+---
+title: "Session Extra - Time Series in Finance (R lab)"
+subtitle: "Forecasting for Time Series (PPLEDBA) - extra session, not examined"
+author: "Prof. Dae-Jin Lee (daelee@faculty.ie.edu)"
+date: "Fall 2026"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
+                      fig.width = 8, fig.height = 4.5)
+```
+
+> **Extra session (beyond the course).** This lab is for interest and is **not part of the
+> final exam**. It looks at stock returns and fits ARCH/GARCH models (`fGarch`).
+> Chunks that need `fGarch` skip cleanly if it is not installed: `install.packages("fGarch")`.
+
+# Packages
+
+```{r}
+library(fpp3)
+has_fgarch <- requireNamespace("fGarch", quietly = TRUE)
+if (has_fgarch) library(fGarch)   # attach: its coef(), predict(), residuals() methods are S4
+has_fgarch
+```
+
+# Prices and log returns
+
+`gafa_stock` has daily prices for Apple, Amazon, Facebook and Google, 2014-2018. Trading
+days are irregular (weekends, holidays), so we re-index by trading day, as in FPP3.
+Returns are in percent: $r_t = 100\,(\log P_t - \log P_{t-1})$.
+
+```{r}
+aapl <- gafa_stock |>
+  filter(Symbol == "AAPL") |>
+  mutate(trading_day = row_number()) |>
+  update_tsibble(index = trading_day, regular = TRUE) |>
+  mutate(r = 100 * difference(log(Adj_Close))) |>
+  filter(!is.na(r))
+
+aapl |> autoplot(Adj_Close) + labs(title = "Apple adjusted close", y = "USD")
+aapl |> autoplot(r) + labs(title = "Apple daily log returns", y = "%")
+```
+
+# Stylised facts
+
+```{r}
+aapl |> as_tibble() |>
+  summarise(n = n(), mean = mean(r), sd = sd(r),
+            kurtosis = mean((r - mean(r))^4) / sd(r)^4)
+```
+
+Kurtosis well above 3 means heavy tails: large moves are more common than a normal
+distribution predicts.
+
+```{r}
+aapl |> ACF(r, lag_max = 30) |> autoplot() + labs(title = "ACF of returns")
+aapl |> ACF(r^2, lag_max = 30) |> autoplot() + labs(title = "ACF of squared returns")
+```
+
+```{r}
+aapl |> features(r, ljung_box, lag = 10)
+aapl |> mutate(r2 = r^2) |> features(r2, ljung_box, lag = 10)
+```
+
+Returns themselves show little autocorrelation, but squared returns do: **volatility
+clustering**. Engle's ARCH-LM test checks the same thing. `feasts::stat_arch_lm()` returns
+the $R^2$ of a regression of $r_t^2$ on its lags; the test statistic is $n R^2$.
+
+```{r}
+arch <- aapl |> features(r, stat_arch_lm, lags = 10)
+n <- nrow(aapl)
+c(LM = n * arch$stat_arch_lm,
+  p_value = pchisq(n * arch$stat_arch_lm, df = 10, lower.tail = FALSE))
+```
+
+# GARCH(1,1) by hand
+
+$$
+\sigma_t^2 = \omega + \alpha\,\varepsilon_{t-1}^2 + \beta\,\sigma_{t-1}^2
+$$
+
+The forecast recursion reverts to the long-run variance
+$\bar\sigma^2 = \omega/(1-\alpha-\beta)$ at rate $\alpha+\beta$:
+
+```{r}
+omega <- 0.1; alpha <- 0.1; beta <- 0.8
+sig2_bar <- omega / (1 - alpha - beta)
+sig2_T1 <- omega + alpha * 3^2 + beta * 1.5        # shock 3, variance 1.5 today
+hh <- 1:20
+sig2_h <- sig2_bar + (alpha + beta)^(hh - 1) * (sig2_T1 - sig2_bar)
+round(sig2_h[c(1, 2, 10, 20)], 3)
+log(0.5) / log(alpha + beta)                          # half-life
+```
+
+# Fitting GARCH(1,1) to Apple returns
+
+`garchFit()` fits a constant mean plus GARCH(1,1) errors by maximum likelihood.
+
+```{r, eval = has_fgarch}
+r <- aapl$r
+g_norm <- garchFit(~ garch(1, 1), data = r, cond.dist = "norm", trace = FALSE)
+cf <- coef(g_norm)
+round(cf, 3)
+pers <- unname(cf["alpha1"] + cf["beta1"])
+c(persistence = pers,
+  half_life_days = log(0.5) / log(pers),
+  longrun_daily_sd = sqrt(unname(cf["omega"]) / (1 - pers)),
+  annualised_sd = sqrt(252) * sqrt(unname(cf["omega"]) / (1 - pers)))
+```
+
+# Conditional volatility
+
+```{r, eval = has_fgarch}
+aapl_g <- aapl |> mutate(sigma = volatility(g_norm))
+aapl_g |>
+  ggplot(aes(trading_day)) +
+  geom_line(aes(y = r), colour = "grey50") +
+  geom_line(aes(y = cf["mu"] + 2 * sigma), colour = "red") +
+  geom_line(aes(y = cf["mu"] - 2 * sigma), colour = "red") +
+  labs(title = "Apple returns with GARCH(1,1) ±2 conditional sd",
+       x = "Trading day", y = "%")
+```
+
+# Diagnostics
+
+If the model captures the volatility dynamics, the squared **standardised** residuals
+$\hat z_t^2 = (\hat\varepsilon_t / \hat\sigma_t)^2$ should show no autocorrelation.
+
+```{r, eval = has_fgarch}
+z <- residuals(g_norm, standardize = TRUE)
+Box.test(z^2, lag = 10, type = "Ljung-Box")
+c(kurtosis_z = mean((z - mean(z))^4) / sd(z)^4)
+```
+
+The clustering is gone, but $\hat z_t$ still has heavy tails, which motivates Student-$t$ errors.
+
+# Volatility forecast
+
+```{r, eval = has_fgarch}
+vf <- predict(g_norm, n.ahead = 60)
+tibble(h = 1:60, sd = vf$standardDeviation) |>
+  ggplot(aes(h, sd)) +
+  geom_line(linewidth = 1) +
+  geom_hline(yintercept = sqrt(cf["omega"] / (1 - pers)), linetype = "dashed") +
+  labs(title = "GARCH(1,1) volatility forecast",
+       subtitle = "Dashed line: long-run daily sd",
+       x = "Days ahead", y = "Daily sd (%)")
+```
+
+# Student-t errors
+
+```{r, eval = has_fgarch}
+g_t <- garchFit(~ garch(1, 1), data = r, cond.dist = "std", trace = FALSE)
+round(coef(g_t), 3)
+rbind(normal = g_norm@fit$ics, student_t = g_t@fit$ics)[, c("AIC", "BIC")]
+```
+
+`fGarch` reports AIC per observation, so compare the two rows directly: lower is better.
+`shape` is the degrees of freedom of the $t$ distribution.
+
+# Your turn
+
+1. **Another stock.** Repeat the analysis for Amazon (`"AMZN"`). Compare $\alpha$, $\beta$,
+   persistence and half-life with Apple.
+2. **ARCH vs GARCH.** Fit `~ garch(1, 0)` (an ARCH(1)) to Apple returns. Compare its AIC
+   with GARCH(1,1). Does the Ljung-Box test on $\hat z_t^2$ still pass?
+3. **Interpretation.** If $\alpha + \beta = 0.99$, what is the half-life of a volatility
+   shock? What does that say about how long a turbulent market stays turbulent?

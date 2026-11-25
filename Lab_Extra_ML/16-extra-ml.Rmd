@@ -1,0 +1,205 @@
+---
+title: "Session Extra - Time Series and Machine Learning (R lab)"
+subtitle: "Forecasting for Time Series (PPLEDBA) - extra session, not examined"
+author: "Prof. Dae-Jin Lee (daelee@faculty.ie.edu)"
+date: "Fall 2026"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
+                      fig.width = 8, fig.height = 4.5)
+```
+
+> **Extra session (beyond the course).** This lab is for interest and is **not part of the
+> final exam**. It treats forecasting as supervised learning with a random forest (`ranger`).
+> Chunks that need `ranger` skip cleanly if it is not installed: `install.packages("ranger")`.
+
+# Packages
+
+```{r}
+library(fpp3)
+has_ranger <- requireNamespace("ranger", quietly = TRUE)
+has_ranger
+```
+
+# Data: Australian cafe turnover
+
+**Turnover** is monthly sales (in millions of Australian dollars) of the industry
+"Cafes, restaurants and takeaway food services". It comes from `aus_retail` (Australian
+Bureau of Statistics); we sum over all states and keep 2004-2018.
+We work on the log scale, as in earlier sessions.
+
+```{r}
+cafe <- aus_retail |>
+  filter(Industry == "Cafes, restaurants and takeaway food services",
+         year(Month) %in% 2004:2018) |>
+  summarise(Turnover = sum(Turnover))
+cafe |> autoplot(Turnover) + labs(title = "Australian cafe turnover", y = "$ million")
+```
+
+# From a series to a supervised-learning table
+
+`embed(z, p + 1)` returns a matrix whose first column is $z_t$ and whose next $p$ columns
+are $z_{t-1}, \dots, z_{t-p}$: one row per time point, lags as features.
+
+```{r}
+z <- log(cafe$Turnover)
+E <- embed(z, 12 + 1)
+colnames(E) <- c("y", paste0("lag", 1:12))
+head(round(E[, 1:5], 3))
+dim(E)
+```
+
+A linear regression on this table is an AR(12) estimated by least squares:
+
+```{r}
+coef(lm(y ~ ., data = as.data.frame(E)))[1:4]
+```
+
+A random forest replaces the linear combination with averages of regression trees.
+
+# Recursive forecasting with a random forest
+
+The function fits a forest on the lag table, then forecasts one step at a time and feeds
+each forecast back in as the newest lag.
+
+```{r}
+rf_recursive <- function(z, h, p = 12, seed = 2026) {
+  E <- embed(z, p + 1)
+  colnames(E) <- c("y", paste0("lag", 1:p))
+  set.seed(seed)
+  m <- ranger::ranger(y ~ ., data = as.data.frame(E), num.trees = 500)
+  hz <- z
+  out <- numeric(h)
+  for (i in seq_len(h)) {
+    nd <- as.data.frame(t(rev(tail(hz, p))))   # newest value is lag1
+    names(nd) <- paste0("lag", 1:p)
+    out[i] <- predict(m, nd)$predictions
+    hz <- c(hz, out[i])                         # feed the forecast back in
+  }
+  out
+}
+
+# (a) forest on log levels
+rf_levels <- function(y, h) rf_recursive(y, h)
+
+# (b) forest on the seasonal difference of the log, then undo the difference:
+#     y_t = y_{t-12} + w_t
+rf_sdiff <- function(y, h) {
+  wf <- rf_recursive(diff(y, lag = 12), h)
+  hy <- y
+  for (i in seq_len(h)) hy <- c(hy, hy[length(hy) - 11] + wf[i])
+  tail(hy, h)
+}
+```
+
+# One split: train to 2016, test 2017-2018
+
+```{r}
+train <- cafe |> filter(year(Month) <= 2016)
+test <- cafe |> filter(year(Month) >= 2017)
+h <- nrow(test)
+
+fc_stat <- train |>
+  model(snaive = SNAIVE(log(Turnover)),
+        ets = ETS(log(Turnover)),
+        arima = ARIMA(log(Turnover))) |>
+  forecast(h = h)
+acc <- accuracy(fc_stat, cafe) |> select(.model, RMSE)
+acc
+```
+
+```{r, eval = has_ranger}
+ly <- log(train$Turnover)
+fc_ml <- tibble(Month = test$Month,
+                rf_levels = exp(rf_levels(ly, h)),
+                rf_sdiff = exp(rf_sdiff(ly, h)))
+rmse <- function(f) sqrt(mean((test$Turnover - f)^2))
+acc_all <- bind_rows(acc, tibble(.model = c("rf_levels", "rf_sdiff"),
+                                 RMSE = c(rmse(fc_ml$rf_levels), rmse(fc_ml$rf_sdiff))))
+acc_all |> arrange(RMSE)
+```
+
+# Trees cannot extrapolate
+
+A tree predicts an average of training targets, so the forest on levels can never go above
+the largest value it has seen.
+
+```{r, eval = has_ranger}
+c(train_max = max(train$Turnover),
+  rf_levels_max = max(fc_ml$rf_levels),
+  test_max = max(test$Turnover))
+
+fc_ml |>
+  pivot_longer(-Month, names_to = "model", values_to = "Turnover") |>
+  ggplot(aes(Month, Turnover, colour = model)) +
+  geom_line(data = cafe |> filter(year(Month) >= 2012) |> as_tibble(),
+            aes(Month, Turnover), colour = "black", inherit.aes = FALSE) +
+  geom_line(linewidth = 1) +
+  geom_hline(yintercept = max(train$Turnover), linetype = "dashed") +
+  labs(title = "Random forest forecasts, 2017-2018",
+       subtitle = "Dashed line: largest value in the training data", y = "$ million")
+```
+
+Modelling the seasonal difference turns an extrapolation problem (a growing level) into
+an interpolation problem (changes that stay in a familiar range). This is the same idea as
+$d$ and $D$ in ARIMA.
+
+# Rolling origins: is the forest really better?
+
+One hold-out is one draw. Repeat the comparison for five forecast origins
+(train up to 2012, ..., 2016; test the next 2 years each time).
+
+```{r, eval = has_ranger}
+run_origin <- function(end_year) {
+  tr <- cafe |> filter(year(Month) <= end_year)
+  te <- cafe |> filter(year(Month) %in% (end_year + 1):(end_year + 2))
+  h <- nrow(te)
+  st <- tr |>
+    model(snaive = SNAIVE(log(Turnover)), ets = ETS(log(Turnover)),
+          arima = ARIMA(log(Turnover))) |>
+    forecast(h = h) |>
+    accuracy(cafe) |>
+    select(.model, RMSE)
+  ly <- log(tr$Turnover)
+  r <- function(f) sqrt(mean((te$Turnover - f)^2))
+  bind_rows(st, tibble(.model = c("rf_levels", "rf_sdiff"),
+                       RMSE = c(r(exp(rf_levels(ly, h))), r(exp(rf_sdiff(ly, h)))))) |>
+    mutate(origin = end_year)
+}
+rolling <- bind_rows(lapply(2012:2016, run_origin))
+
+rolling |>
+  pivot_wider(names_from = origin, values_from = RMSE) |>
+  mutate(mean = rowMeans(across(-.model))) |>
+  arrange(mean) |>
+  mutate(across(where(is.numeric), round))
+```
+
+```{r, eval = has_ranger}
+rolling |>
+  group_by(origin) |>
+  slice_min(RMSE, n = 1) |>
+  select(origin, winner = .model, RMSE)
+```
+
+**Read the table.** Which model wins the 2016 origin (the single split above)? Which model
+has the lowest *mean* RMSE? How many origins does `rf_sdiff` win?
+
+# Your turn
+
+1. **Lags.** Refit `rf_sdiff` with `p = 24` lags instead of 12. Does the mean rolling-origin
+   RMSE improve?
+2. **Another learner.** Replace the forest with a linear model on the same lag table
+   (`lm(y ~ ., ...)`). How does this "AR(12) on seasonal differences" compare with
+   `rf_sdiff` and with `ARIMA()`?
+3. **Neural network.** `fable` has a neural network autoregression (FPP3 Section 12.4):
+   add `nnar = NNETAR(log(Turnover))` to the `model()` call of the single split (it can take
+   a minute; use `set.seed()` first). Where does it rank? Does it extrapolate the trend?
+4. **Leakage.** Suppose you add a feature "mean of $y$ over the 12 months *centred* on $t$".
+   Why would this give an excellent test RMSE and useless real forecasts?
